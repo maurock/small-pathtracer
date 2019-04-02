@@ -11,6 +11,9 @@
 #include <stdio.h>  //        Remove "-fopenmp" for g++ version < 4.2
 #include <iostream>
 #include <array>
+#include <chrono>
+using namespace std;
+using namespace std::chrono;
 
 #define RAND48_MULT_0   (0xe66d)
 #define RAND48_MULT_1   (0xdeec)
@@ -150,8 +153,8 @@ Sphere spheres[] = {
 	Sphere(1e5, Vec(50,-1e5+81.6,81.6),Vec(),Vec(.75,.75,.75),DIFF),//Top
 	Sphere(16.5,Vec(27,16.5,47),       Vec(),Vec(1,1,1)*.999, DIFF),//Mirr
 	//Sphere(16.5,Vec(73,16.5,78),       Vec(),Vec(1,1,1)*.999, REFR),//Glas
-	Sphere(16.5,Vec(73,16.5,78),		Vec(),Vec(.75,.75,.75), DIFF)//Glas
-	//Sphere(600, Vec(50,681.6-.27,81.6),Vec(15,15,15),  Vec(), DIFF) //Light
+	Sphere(16.5,Vec(73,16.5,78),		Vec(),Vec(.75,.75,.75), DIFF),//Glas
+	Sphere(600, Vec(50,681.6-.27,81.6),Vec(12,12,12),  Vec(), DIFF) //Light
 };
 
 // clamp makes sure that the set is bounded (used for radiance() )
@@ -216,16 +219,22 @@ Vec radiance(const Ray &r, int depth, unsigned short *Xi){
   int id=0;                             // id of intersected object
 
   if (!intersect(r, t, id)) return Vec(); // if miss, return black
-  std::cout<< id; 	  	  	  	  	  	   // in the function, it also sets the t to the closest hitting distance
+  	  	  	  	  	  	  	  	  	  	  // in the function, it also sets the t to the closest hitting distance
   Sphere &obj = spheres[id];              // the hit object
   Vec x = r.o+r.d*t;					// ray intersection point (t calculated in intersect())
   Vec n = (x - obj.p).norm();			// sphere normal
   Vec nl = n.dot(r.d)<0?n:n*-1;			// properly orient the normal. If I am inside the sphere, the normal needs to point towards the inside
   										// indeed, the angle would be < 90, so dot() < 0. Also, if in a glass it enters or exits
-
-  Vec f =  obj.c;					// sphere color
+  Vec f =  obj.c;     					// sphere color
   double p = f.x>f.y && f.x>f.z ? f.x : f.y>f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
-  if (++depth>5) if (erand48(Xi)<p) f=f*(1/p); else return obj.e; // Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
+  if (++depth>5 || !p){
+	  if (erand48(Xi)<p){
+		  f=f*(1/p);
+	  }
+	  else {
+		  return obj.e; // Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
+	  }
+  }
   	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  //This is based on the reflectivity, and the BRDF scaled to compensate for it.
   if (obj.refl == DIFF){                // Ideal DIFFUSE reflection.
 	// TOTAL RANDOM SCATTERING
@@ -252,6 +261,8 @@ Vec radiance(const Ray &r, int depth, unsigned short *Xi){
 
 // LOOPS OVER IMAGE PIXELS, SAVES TO PPM FILE
 int main(int argc, char *argv[]){
+	 high_resolution_clock::time_point t1 = high_resolution_clock::now();
+
   // Set up image
   int w=512, h=512; // Resolution
   int samps = 16; 	// Number samples
@@ -268,42 +279,23 @@ int main(int argc, char *argv[]){
     for (unsigned short x=0, Xi[3]={0,0,y*y*y}; x<w; x++) {  // Loop cols. Xi = random seed
     	for (int s=0; s<samps; s++){
     		 // u and v represents the percentage of the horizontal and vertical values
-        	 double u = float(x + rand() / double(RAND_MAX)) / float(w);
-        	 double v = float((h-y-1) + rand() / double(RAND_MAX)) / float(h);
+        	 float u = float(x - 0.5 + rand() / double(RAND_MAX)) / float(w);
+        	 float v = float((h-y-1) - 0.5 + rand() / double(RAND_MAX)) / float(h);
         	 Ray d = cam.get_ray(u,v);
              r = r + radiance(Ray(cam.origin,d.d.norm()),0,Xi)*(1./samps);  // The average is the same as averaging at the end
           } // Camera rays are pushed ^^^^^ forward to start in interior
-    	c[i] = c[i] + Vec(clamp(r.x),clamp(r.y),clamp(r.z))*.25;
+    	c[i] = c[i] + Vec(clamp(r.x),clamp(r.y),clamp(r.z));
     	i++;
     	r = Vec();
    }
   }
-  FILE *f = fopen("image8.ppm", "w");         // Write image to PPM file.
+  FILE *f = fopen("image14.ppm", "w");         // Write image to PPM file.
   fprintf(f, "P3\n%d %d\n%d\n", w, h, 255);
   for (int i=0; i<w*h; i++)
     fprintf(f,"%d %d %d ", toInt(c[i].x), toInt(c[i].y), toInt(c[i].z));
+  high_resolution_clock::time_point t2 = high_resolution_clock::now();
+  auto duration = duration_cast<milliseconds>( t2 - t1 ).count();
+  std::cout << " DURATION : " << duration;
 }
-
-
-/*
-// LOOP OVER ALL IMAGE PIXELS
-for (int y=0; y<h; y++){                       // Loop over image rows
-fprintf(stderr,"\rRendering (%d spp) %5.2f%%",samps*4,100.*y/(h-1));   // Print progress
-for (unsigned short x=0, Xi[3]={0,0,y*y*y}; x<w; x++)   // Loop cols. Xi = random seed
-  for (int sy=0, i=(h-y-1)*w+x; sy<2; sy++)     // 2x2 subpixel rows. i is the index of an array, given (x,y). Ex. x=0, y=h-1. Array index = 0.
-	for (int sx=0; sx<2; sx++, r=Vec()){        // 2x2 subpixel cols
-	  for (int s=0; s<samps; s++){
-		  // TENT FILTER
-		  // r1 and r2 are random values of sample within pixel
-		double r1=2*erand48(Xi), dx=r1<1 ? sqrt(r1)-1: 1-sqrt(2-r1);    // -1 < dx, dy < +1
-		double r2=2*erand48(Xi), dy=r2<1 ? sqrt(r2)-1: 1-sqrt(2-r2);
-		// Compute ray direction using cam.d, cx, cy
-		Vec d = cx*( ( (sx+.5 + dx)/2 + x)/w - .5) +
-				cy*( ( (sy+.5 + dy)/2 + y)/h - .5) + cam.d;
-		r = r + radiance(Ray(cam.o+d*140,d.norm()),30,Xi)*(1./samps);  // The average is the same as averaging at the end
-	  } // Camera rays are pushed ^^^^^ forward to start in interior
-	  c[i] = c[i] + Vec(clamp(r.x),clamp(r.y),clamp(r.z))*.25;
-	}
-} */
 
 
