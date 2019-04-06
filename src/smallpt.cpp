@@ -55,7 +55,7 @@ double erand48(unsigned short xseed[3])
         ldexp((double)xseed[2], -16);
 }
 
-struct Vec {        // Usage: time ./smallpt 5000 && xv image.ppm
+struct Vec {
   double x, y, z;                  // position, also color (r,g,b)
   Vec(double x_=0, double y_=0, double z_=0){ x=x_; y=y_; z=z_; }
   Vec operator+(const Vec &b) const { return Vec(x+b.x,y+b.y,z+b.z); }
@@ -68,6 +68,7 @@ struct Vec {        // Usage: time ./smallpt 5000 && xv image.ppm
   Vec& norm(){ return *this = *this * (1/sqrt(x*x+y*y+z*z)); }
   double dot(const Vec &b) const { return x*b.x+y*b.y+z*b.z; }
   Vec operator%(Vec &b){return Vec(y*b.z-z*b.y,z*b.x-x*b.z,x*b.y-y*b.x);} // cross
+  double magnitude(){return sqrt(x*x+y*y+z*z);}
 };
 
 struct Ray { Vec o, d; Ray(Vec o_, Vec d_) : o(o_), d(d_) {} };
@@ -142,7 +143,6 @@ class Camera{
 		Vec vertical;
 };
 
-
 Sphere spheres[] = {
 	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Vec(),Vec(.25,.75,.25),DIFF), //Scene: radius, position, emission, color, material
 	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Vec(),Vec(.25,.75,.25),DIFF),//Left
@@ -154,7 +154,7 @@ Sphere spheres[] = {
 	Sphere(16.5,Vec(27,16.5,47),       Vec(),Vec(1,1,1)*.999, DIFF),//Mirr
 	//Sphere(16.5,Vec(73,16.5,78),       Vec(),Vec(1,1,1)*.999, REFR),//Glas
 	Sphere(16.5,Vec(73,16.5,78),		Vec(),Vec(.75,.75,.75), DIFF),//Glas
-	Sphere(600, Vec(50,681.6-.27,81.6),Vec(12,12,12),  Vec(), DIFF) //Light
+	Sphere(600, Vec(50,681.6-.27,81.6),Vec(12,12,12),  Vec(), DIFF) //Light		Radius = 18 (trigonometry)
 };
 
 // clamp makes sure that the set is bounded (used for radiance() )
@@ -178,7 +178,7 @@ inline bool intersect(const Ray &r, double &t, int &id){
 }
 
 inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
-
+/*
 	// COSINE-WEIGHTED SAMPLING
 	double r1 = 2*M_PI*erand48(Xi);		// get random angle
 	double r2 = erand48(Xi);			// get random distance from center
@@ -187,9 +187,11 @@ inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
 	Vec w = nl;			// w = normal
 	Vec u = ((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm();
 	Vec v = w%u;
-	return (u*cos(r1)*r2s + v*sin(r1)*r2s + w*sqrt(1-r2)).norm();   // reflection ray with cosine sampling (check calculus)
+	return (u*cos(r1)*r2s + v*sin(r1)*r2s + w*sqrt(1-r2)).norm();
+*/
+	// reflection ray with cosine sampling (check calculus)
 
-	/*
+
 	// UNIFORM SAMPLING
 	double r1 = 2*M_PI*erand48(Xi);		// get random angle Gamma
 	double r2 = erand48(Xi);			// get random distance from center
@@ -197,50 +199,67 @@ inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
 	Vec w = nl;			// w = normal
 	Vec u = ((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm();
 	Vec v = w%u;
-	return (u*cos(r1)*sqrt(r2*(2-r2)) + v*sin(r1)*sqrt(r2*(2-r2)) + w*(1-r2)).norm();   // random reflection ray */
+	return (u*cos(r1)*sqrt(r2*(2-r2)) + v*sin(r1)*sqrt(r2*(2-r2)) + w*(1-r2)).norm();   // random reflection ray
+
 }
 
-Vec light_sampling(const Vec& nl, const Vec& x, unsigned short *Xi, int* ptrDepth, bool* ptrHitlight){
+inline Vec light_sampling(const Vec& nl, const Vec& hit, unsigned short *Xi){
 	// SAMPLING LIGHT (HARD-CODED)
-	Vec light_vec = Vec(50,81.6, 81.6) - x;
-
-	if(light_vec.dot(nl)<0){
-		return random_scattering(nl, Xi);
-	}
-	*ptrDepth = *ptrDepth + 10;
-	*ptrHitlight = true;
-	//std::cout << *ptrDepth << std::endl;	//*ptrDepth = 20;
+	double x_light = 32 + rand() * 36 / double(RAND_MAX);
+	double z_light = 63 + rand() * 36 / double(RAND_MAX);
+	Vec light_vec = Vec(x_light,81.6, z_light) - hit;
 	return light_vec;
 }
 
+inline Vec hittingPoint(const Ray &r, int &id) {
+	  double t;                             // distance to intersection
+	  if (!intersect(r, t, id)) return Vec();
+	  Vec x = r.o+r.d*t;					// ray intersection point (t calculated in intersect())
+	  return x;
+}
 
-Vec radiance(const Ray &r, int depth, unsigned short *Xi){
-  double t;                             // distance to intersection
-  int id=0;                             // id of intersected object
+inline Vec normal(Vec &point, Vec &center) {
+	return (point - center).norm();
+}
 
-  if (!intersect(r, t, id)) return Vec(); // if miss, return black
-  	  	  	  	  	  	  	  	  	  	  // in the function, it also sets the t to the closest hitting distance
-  Sphere &obj = spheres[id];              // the hit object
-  Vec x = r.o+r.d*t;					// ray intersection point (t calculated in intersect())
-  Vec n = (x - obj.p).norm();			// sphere normal
-  Vec nl = n.dot(r.d)<0?n:n*-1;			// properly orient the normal. If I am inside the sphere, the normal needs to point towards the inside
-  										// indeed, the angle would be < 90, so dot() < 0. Also, if in a glass it enters or exits
-  Vec f =  obj.c;     					// sphere color
-  double p = f.x>f.y && f.x>f.z ? f.x : f.y>f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
-  if (++depth>5 || !p){
-	  if (erand48(Xi)<p){
-		  f=f*(1/p);
-	  }
-	  else {
-		  return obj.e; // Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
-	  }
-  }
+inline Vec radiance(const Ray &r, int depth, unsigned short *Xi){
+	int id = 0;                             // initialize id of intersected object
+	Vec x = hittingPoint(r, id);            // id calculated inside the function
+	Sphere &obj = spheres[id];              // the hit object
+	Vec n = (x - obj.p).norm();				// sphere normal
+	Vec nl = n.dot(r.d) < 0 ? n : n * -1;	// properly orient the normal. If I am inside the sphere, the normal needs to point towards the inside
+											// indeed, the angle would be < 90, so dot() < 0. Also, if in a glass it enters or exits
+	Vec f = obj.c;     					// sphere color
+	double p = f.x > f.y && f.x > f.z ? f.x : f.y > f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
+	if (++depth > 5 || !p) {
+		if (erand48(Xi) < p) {
+			f = f * (1 / p);
+		} else {
+			return obj.e; // Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
+		}
+	}
   	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  //This is based on the reflectivity, and the BRDF scaled to compensate for it.
-  if (obj.refl == DIFF){                // Ideal DIFFUSE reflection.
+  if (obj.refl == DIFF){                   // Ideal DIFFUSE reflection.
 	// TOTAL RANDOM SCATTERING
 	Vec d;
-	d = random_scattering(nl, Xi);
-    return obj.e + f.mult(radiance(Ray(x,d),depth,Xi));				// get color in recursive function
+	double q = rand() / double(RAND_MAX);
+	double PDF_inverse = 1;
+	double BRDF = 1;
+	if (q < 0){
+		d = light_sampling(nl, x, Xi);
+		double t;                             // distance to intersection
+	    intersect(Ray(x,d.norm()), t, id);
+		if(id != 9){
+			d = random_scattering(nl, Xi);
+		}else{
+			PDF_inverse = fabs((1018 * d.norm().dot(Vec(0,1,0))) / (t*t));		//PDF = r^2 / (A * cos(theta_light))
+			BRDF = fabs(d.norm().dot(nl) / M_PI);
+		}
+	}
+	else{
+		d = random_scattering(nl, Xi);
+	}
+    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi)) * PDF_inverse * BRDF;				// get color in recursive function
   }
 
   else if (obj.refl == SPEC)            // Ideal SPECULAR reflection
@@ -261,11 +280,12 @@ Vec radiance(const Ray &r, int depth, unsigned short *Xi){
 
 // LOOPS OVER IMAGE PIXELS, SAVES TO PPM FILE
 int main(int argc, char *argv[]){
-	 high_resolution_clock::time_point t1 = high_resolution_clock::now();
+  srand(time(NULL));
+  high_resolution_clock::time_point t1 = high_resolution_clock::now();
 
   // Set up image
   int w=512, h=512; // Resolution
-  int samps = 16; 	// Number samples
+  int samps = 32; 	// Number samples
   Vec r;	// Used for colors of samples
   Vec *c = new Vec[w*h]; // The image
 
@@ -289,10 +309,13 @@ int main(int argc, char *argv[]){
     	r = Vec();
    }
   }
-  FILE *f = fopen("image14.ppm", "w");         // Write image to PPM file.
+
+  FILE *f = fopen("image_32pps_totalrandom.ppm", "w");         // Write image to PPM file.
   fprintf(f, "P3\n%d %d\n%d\n", w, h, 255);
   for (int i=0; i<w*h; i++)
     fprintf(f,"%d %d %d ", toInt(c[i].x), toInt(c[i].y), toInt(c[i].z));
+
+  // Calculate duration
   high_resolution_clock::time_point t2 = high_resolution_clock::now();
   auto duration = duration_cast<milliseconds>( t2 - t1 ).count();
   std::cout << " DURATION : " << duration;
