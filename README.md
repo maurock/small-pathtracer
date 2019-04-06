@@ -17,3 +17,12 @@ Features implemented:
 - Uniform Sampling 
 - Monte Carlo Path Tracing.
 - Ray-Sphere Intersection.
+- Explicit Light Sampling
+
+![path_tracer](https://user-images.githubusercontent.com/30290271/55671264-a3e7f980-588e-11e9-9b87-931fddcfe9b1.png)
+
+<i>From left to right:
+- Random sampling. Sample per pixel: 32. Rendering time: 83s
+- Cosine-weighted Monte Carlo importance sampling. Sample per pixel: 32 spp. Rendering time: 84s. 
+- Explicit light sampling. Sample per pixel: 32 spp. Rendering time:31s. 
+</i>
