@@ -5,7 +5,6 @@
  *      Author: mauro
  */
 
-
 #include <math.h>   // smallpt, a Path Tracer by Kevin Beason, 2008
 #include <stdlib.h> // Make : g++ -O3 -fopenmp smallpt.cpp -o smallpt
 #include <stdio.h>  //        Remove "-fopenmp" for g++ version < 4.2
@@ -178,7 +177,7 @@ inline bool intersect(const Ray &r, double &t, int &id){
 }
 
 inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
-/*
+
 	// COSINE-WEIGHTED SAMPLING
 	double r1 = 2*M_PI*erand48(Xi);		// get random angle
 	double r2 = erand48(Xi);			// get random distance from center
@@ -188,10 +187,10 @@ inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
 	Vec u = ((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm();
 	Vec v = w%u;
 	return (u*cos(r1)*r2s + v*sin(r1)*r2s + w*sqrt(1-r2)).norm();
-*/
+
 	// reflection ray with cosine sampling (check calculus)
 
-
+/*
 	// UNIFORM SAMPLING
 	double r1 = 2*M_PI*erand48(Xi);		// get random angle Gamma
 	double r2 = erand48(Xi);			// get random distance from center
@@ -200,7 +199,7 @@ inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
 	Vec u = ((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm();
 	Vec v = w%u;
 	return (u*cos(r1)*sqrt(r2*(2-r2)) + v*sin(r1)*sqrt(r2*(2-r2)) + w*(1-r2)).norm();   // random reflection ray
-
+*/
 }
 
 inline Vec light_sampling(const Vec& nl, const Vec& hit, unsigned short *Xi){
@@ -222,7 +221,7 @@ inline Vec normal(Vec &point, Vec &center) {
 	return (point - center).norm();
 }
 
-inline Vec radiance(const Ray &r, int depth, unsigned short *Xi){
+inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_length ){
 	int id = 0;                             // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
 	Sphere &obj = spheres[id];              // the hit object
@@ -245,12 +244,13 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi){
 	double q = rand() / double(RAND_MAX);
 	double PDF_inverse = 1;
 	double BRDF = 1;
+	double t; 	// distance to intersection
 	if (q < 0){
 		d = light_sampling(nl, x, Xi);
-		double t;                             // distance to intersection
 	    intersect(Ray(x,d.norm()), t, id);
 		if(id != 9){
 			d = random_scattering(nl, Xi);
+			intersect(Ray(x,d.norm()), t, id);
 		}else{
 			PDF_inverse = fabs((1018 * d.norm().dot(Vec(0,1,0))) / (t*t));		//PDF = r^2 / (A * cos(theta_light))
 			BRDF = fabs(d.norm().dot(nl) / M_PI);
@@ -258,10 +258,13 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi){
 	}
 	else{
 		d = random_scattering(nl, Xi);
+		intersect(Ray(x,d.norm()), t, id);
 	}
-    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi)) * PDF_inverse * BRDF;				// get color in recursive function
+	*path_length = *path_length + t;
+    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi, path_length)) * PDF_inverse * BRDF;				// get color in recursive function
   }
 
+  /*
   else if (obj.refl == SPEC)            // Ideal SPECULAR reflection
     return obj.e + f.mult(radiance(Ray(x,r.d-n*2*n.dot(r.d)),depth,Xi));
 
@@ -275,7 +278,7 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi){
   double Re=R0+(1-R0)*c*c*c*c*c,Tr=1-Re,P=.25+.5*Re,RP=Re/P,TP=Tr/(1-P);
   return obj.e + f.mult(depth>2 ? (erand48(Xi)<P ?   // Russian roulette
     radiance(reflRay,depth,Xi)*RP:radiance(Ray(x,tdir),depth,Xi)*TP) :
-    radiance(reflRay,depth,Xi)*Re+radiance(Ray(x,tdir),depth,Xi)*Tr);
+    radiance(reflRay,depth,Xi)*Re+radiance(Ray(x,tdir),depth,Xi)*Tr);	*/
 }
 
 // LOOPS OVER IMAGE PIXELS, SAVES TO PPM FILE
@@ -285,13 +288,16 @@ int main(int argc, char *argv[]){
 
   // Set up image
   int w=512, h=512; // Resolution
-  int samps = 32; 	// Number samples
+  int samps = 16; 	// Number samples
   Vec r;	// Used for colors of samples
   Vec *c = new Vec[w*h]; // The image
 
   // Set up camera
   Camera cam(Vec(50,40,168), Vec(50,40, 5), Vec(0,1,0), 65, float(w)/float(h));
 
+ // Average path length
+  double path_length = 0;
+  double* ptrPath_length = &path_length;
  // #pragma omp parallel for schedule(dynamic, 1) private(r)       // OpenMP. Each loop should be run in its own thread
   // LOOP OVER ALL IMAGE PIXELS
  for (int y=0, i=0; y<h; y++){                       // Loop over image rows
@@ -302,15 +308,16 @@ int main(int argc, char *argv[]){
         	 float u = float(x - 0.5 + rand() / double(RAND_MAX)) / float(w);
         	 float v = float((h-y-1) - 0.5 + rand() / double(RAND_MAX)) / float(h);
         	 Ray d = cam.get_ray(u,v);
-             r = r + radiance(Ray(cam.origin,d.d.norm()),0,Xi)*(1./samps);  // The average is the same as averaging at the end
+             r = r + radiance(Ray(cam.origin,d.d.norm()),0,Xi,ptrPath_length)*(1./samps);  // The average is the same as averaging at the end
           } // Camera rays are pushed ^^^^^ forward to start in interior
     	c[i] = c[i] + Vec(clamp(r.x),clamp(r.y),clamp(r.z));
     	i++;
     	r = Vec();
    }
   }
+  std::cout << path_length/(samps*w*h);
 
-  FILE *f = fopen("image_32pps_totalrandom.ppm", "w");         // Write image to PPM file.
+  FILE *f = fopen("image_512pps_explicitlight_test.ppm", "w");         // Write image to PPM file.
   fprintf(f, "P3\n%d %d\n%d\n", w, h, 255);
   for (int i=0; i<w*h; i++)
     fprintf(f,"%d %d %d ", toInt(c[i].x), toInt(c[i].y), toInt(c[i].z));
