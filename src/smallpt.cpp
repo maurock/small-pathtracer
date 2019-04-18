@@ -11,6 +11,8 @@
 #include <iostream>
 #include <array>
 #include <chrono>
+#include <map>
+#include <tr1/unordered_map>
 using namespace std;
 using namespace std::chrono;
 
@@ -18,6 +20,10 @@ using namespace std::chrono;
 #define RAND48_MULT_1   (0xdeec)
 #define RAND48_MULT_2   (0x0005)
 #define RAND48_ADD      (0x000b)
+
+using Key = std::array<float, 3>;
+using QValue = std::array<float, 3>;
+using ColorValue = std::array<float, 3>;
 
 const int NUMBER_OBJ = 10;
 unsigned short _rand48_add = RAND48_ADD;
@@ -76,17 +82,17 @@ enum Refl_t { DIFF, SPEC, REFR };  // material types, used in radiance()
 
 class Sphere{
 	public:
-		double rad;       // radius
+		float rad;       // radius
 		Vec p, e, c;      // position, emission, color
 		Refl_t refl;      // reflection type (DIFFuse, SPECular, REFRactive)
-		Sphere(double rad_, Vec p_, Vec e_, Vec c_, Refl_t refl_):
+		Sphere(float rad_, Vec p_, Vec e_, Vec c_, Refl_t refl_):
 		rad(rad_), p(p_), e(e_), c(c_), refl(refl_) {}
 
-		double intersect(const Ray &r) const { // returns distance, 0 if no hit
+		float intersect(const Ray &r) const { // returns distance, 0 if no hit
 			Vec op = p-r.o; // Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0
-			double t, eps=1e-4;
-			double b = op.dot(r.d);
-			double det = b*b-op.dot(op)+rad*rad;
+			float t, eps=1e-4;
+			float b = op.dot(r.d);
+			float det = b*b-op.dot(op)+rad*rad;
 			if (det<0) return 0; else det=sqrt(det);
 
 			return (t=b-det)>eps ? t : ((t=b+det)>eps ? t : 0);
@@ -156,17 +162,18 @@ Sphere spheres[] = {
 	Sphere(600, Vec(50,681.6-.27,81.6),Vec(12,12,12),  Vec(), DIFF) //Light		Radius = 18 (trigonometry)
 };
 
+
 // clamp makes sure that the set is bounded (used for radiance() )
-inline double clamp(double x){ return x<0 ? 0 : x>1 ? 1 : x; }
+inline float clamp(float x){ return x<0 ? 0 : x>1 ? 1 : x; }
 
 // toInt() applies a gamma correction of 2.2, because our screen doesn't show colors linearly
-inline int toInt(double x){ return int(pow(clamp(x),1/2.2)*255+.5); }
+inline int toInt(float x){ return int(pow(clamp(x),1/2.2)*255+.5); }
 
-inline bool intersect(const Ray &r, double &t, int &id){
-  double n= sizeof(spheres)/sizeof(Sphere); //Divide allocation of byte of the whole scene, by allocation in byte of one single element
-  double d;
-  double inf=t=1e20;
-  for(int i=int(n);i--;) {
+inline bool intersect(const Ray &r, float &t, int &id){
+	float n= sizeof(spheres)/sizeof(Sphere); //Divide allocation of byte of the whole scene, by allocation in byte of one single element
+	float d;
+	float inf=t=1e20;
+	for(int i=int(n);i--;) {
 	  if((d=spheres[i].intersect(r))&&d<t){	// Distance of hit point
 		  t=d;
 		  id=i;
@@ -179,9 +186,9 @@ inline bool intersect(const Ray &r, double &t, int &id){
 inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
 
 	// COSINE-WEIGHTED SAMPLING
-	double r1 = 2*M_PI*erand48(Xi);		// get random angle
-	double r2 = erand48(Xi);			// get random distance from center
-	double r2s = sqrt(r2);
+	float r1 = 2*M_PI*erand48(Xi);		// get random angle
+	float r2 = erand48(Xi);			// get random distance from center
+	float r2s = sqrt(r2);
 	// Create orthonormal coordinate frame for scattered ray
 	Vec w = nl;			// w = normal
 	Vec u = ((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm();
@@ -204,14 +211,14 @@ inline Vec random_scattering(const Vec& nl, unsigned short *Xi){
 
 inline Vec light_sampling(const Vec& nl, const Vec& hit, unsigned short *Xi){
 	// SAMPLING LIGHT (HARD-CODED)
-	double x_light = 32 + rand() * 36 / double(RAND_MAX);
-	double z_light = 63 + rand() * 36 / double(RAND_MAX);
+	float x_light = 32 + rand() * 36 / float(RAND_MAX);
+	float z_light = 63 + rand() * 36 / float(RAND_MAX);
 	Vec light_vec = Vec(x_light,81.6, z_light) - hit;
 	return light_vec;
 }
 
 inline Vec hittingPoint(const Ray &r, int &id) {
-	  double t;                             // distance to intersection
+	  float t;                             // distance to intersection
 	  if (!intersect(r, t, id)) return Vec();
 	  Vec x = r.o+r.d*t;					// ray intersection point (t calculated in intersect())
 	  return x;
@@ -221,15 +228,43 @@ inline Vec normal(Vec &point, Vec &center) {
 	return (point - center).norm();
 }
 
-inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_length ){
+inline Vec show_state_space(const Ray &r, std::map<Key,ColorValue> *dict){
 	int id = 0;                             // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
+	Vec x_reduced = Vec(ceil((float) x.x / 10),ceil((float) x.y /10),ceil((float) x.z /10));
+
+	Key key = {x_reduced.x, x_reduced.y, x_reduced.z};
+	ColorValue value = {x_reduced.x/10 * (rand() / float(RAND_MAX)), x_reduced.y/10 * (rand() / float(RAND_MAX)), x_reduced.z/10 *(rand() / float(RAND_MAX))};
+	std::map<Key, ColorValue> &addrDict = *dict;
+	if (addrDict.count(key) < 1) {
+	  // not found, x
+		addrDict[key] = value;
+	}
+	return Vec(addrDict[key][0], addrDict[key][1], addrDict[key][2]);
+}
+
+inline void create_state_space(const Vec& x, std::map<Key,QValue> *dict){
+	Vec x_reduced = Vec(ceil((float) x.x / 10),ceil((float) x.y /10),ceil((float) x.z /10));
+	Key key = {x_reduced.x, x_reduced.y, x_reduced.z};
+	QValue value = {x_reduced.x/10 * (rand() / float(RAND_MAX)), x_reduced.y/10 * (rand() / float(RAND_MAX)), x_reduced.z/10 *(rand() / float(RAND_MAX))};
+	std::map<Key, QValue> &addrDict = *dict;
+	if (addrDict.count(key) < 1) {
+	  // not found, x
+		addrDict[key] = {1,1,1};
+	}
+}
+
+
+inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_length, std::map<Key,QValue> *dict){
+	int id = 0;                             // initialize id of intersected object
+	Vec x = hittingPoint(r, id);            // id calculated inside the function
+
 	Sphere &obj = spheres[id];              // the hit object
 	Vec n = (x - obj.p).norm();				// sphere normal
 	Vec nl = n.dot(r.d) < 0 ? n : n * -1;	// properly orient the normal. If I am inside the sphere, the normal needs to point towards the inside
 											// indeed, the angle would be < 90, so dot() < 0. Also, if in a glass it enters or exits
 	Vec f = obj.c;     					// sphere color
-	double p = f.x > f.y && f.x > f.z ? f.x : f.y > f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
+	float p = f.x > f.y && f.x > f.z ? f.x : f.y > f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
 	if (++depth > 5 || !p) {
 		if (erand48(Xi) < p) {
 			f = f * (1 / p);
@@ -241,10 +276,10 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
   if (obj.refl == DIFF){                   // Ideal DIFFUSE reflection.
 	// TOTAL RANDOM SCATTERING
 	Vec d;
-	double q = rand() / double(RAND_MAX);
-	double PDF_inverse = 1;
-	double BRDF = 1;
-	double t; 	// distance to intersection
+	float q = rand() / float(RAND_MAX);
+	float PDF_inverse = 1;
+	float BRDF = 1;
+	float t; 	// distance to intersection
 	if (q < 0){
 		d = light_sampling(nl, x, Xi);
 	    intersect(Ray(x,d.norm()), t, id);
@@ -261,7 +296,7 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 		intersect(Ray(x,d.norm()), t, id);
 	}
 	*path_length = *path_length + t;
-    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi, path_length)) * PDF_inverse * BRDF;				// get color in recursive function
+    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi, path_length, dict)) * PDF_inverse * BRDF;			// get color in recursive function
   }
 
   /*
@@ -291,24 +326,27 @@ int main(int argc, char *argv[]){
   int samps = 16; 	// Number samples
   Vec r;	// Used for colors of samples
   Vec *c = new Vec[w*h]; // The image
+  std::map<Key,QValue>* dict = new std::map<Key,QValue>;
 
   // Set up camera
   Camera cam(Vec(50,40,168), Vec(50,40, 5), Vec(0,1,0), 65, float(w)/float(h));
 
  // Average path length
-  double path_length = 0;
-  double* ptrPath_length = &path_length;
+  float path_length = 0;
+  float* ptrPath_length = &path_length;
  // #pragma omp parallel for schedule(dynamic, 1) private(r)       // OpenMP. Each loop should be run in its own thread
+
+
   // LOOP OVER ALL IMAGE PIXELS
  for (int y=0, i=0; y<h; y++){                       // Loop over image rows
     fprintf(stderr,"\rRendering (%d spp) %5.2f%%",samps,100.*y/(h-1));   // Print progress
     for (unsigned short x=0, Xi[3]={0,0,y*y*y}; x<w; x++) {  // Loop cols. Xi = random seed
     	for (int s=0; s<samps; s++){
     		 // u and v represents the percentage of the horizontal and vertical values
-        	 float u = float(x - 0.5 + rand() / double(RAND_MAX)) / float(w);
-        	 float v = float((h-y-1) - 0.5 + rand() / double(RAND_MAX)) / float(h);
+        	 float u = float(x - 0.5 + rand() / float(RAND_MAX)) / float(w);
+        	 float v = float((h-y-1) - 0.5 + rand() / float(RAND_MAX)) / float(h);
         	 Ray d = cam.get_ray(u,v);
-             r = r + radiance(Ray(cam.origin,d.d.norm()),0,Xi,ptrPath_length)*(1./samps);  // The average is the same as averaging at the end
+             r = r + radiance(Ray(cam.origin,d.d.norm()),0,Xi,ptrPath_length, dict)*(1./samps);  // The average is the same as averaging at the end
           } // Camera rays are pushed ^^^^^ forward to start in interior
     	c[i] = c[i] + Vec(clamp(r.x),clamp(r.y),clamp(r.z));
     	i++;
@@ -317,7 +355,13 @@ int main(int argc, char *argv[]){
   }
   std::cout << path_length/(samps*w*h);
 
-  FILE *f = fopen("image_512pps_explicitlight_test.ppm", "w");         // Write image to PPM file.
+
+  for (const auto &p : *dict) {
+      std::cout << "KEY: " << p.first[0] << " " << p.first[1] << " " <<  p.first[2] << " " <<  " value: " <<  p.second[0] << " " <<  p.second[1] << " " << p.second[2]  <<'\n';
+  }
+
+
+  FILE *f = fopen("image_test.ppm", "w");         // Write image to PPM file.
   fprintf(f, "P3\n%d %d\n%d\n", w, h, 255);
   for (int i=0; i<w*h; i++)
     fprintf(f,"%d %d %d ", toInt(c[i].x), toInt(c[i].y), toInt(c[i].z));
