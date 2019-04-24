@@ -61,8 +61,8 @@ double erand48(unsigned short xseed[3])
 }
 
 struct Vec {
-  double x, y, z;                  // position, also color (r,g,b)
-  Vec(double x_=0, double y_=0, double z_=0){ x=x_; y=y_; z=z_; }
+  float x, y, z;                  // position, also color (r,g,b)
+  Vec(float x_=0, float y_=0, float z_=0){ x=x_; y=y_; z=z_; }
   Vec operator+(const Vec &b) const { return Vec(x+b.x,y+b.y,z+b.z); }
   Vec operator-(const Vec &b) const { return Vec(x-b.x,y-b.y,z-b.z); }
   Vec operator*(double b) const { return Vec(x*b,y*b,z*b); }
@@ -71,9 +71,9 @@ struct Vec {
 
   Vec mult(const Vec &b) const { return Vec(x*b.x,y*b.y,z*b.z); }
   Vec& norm(){ return *this = *this * (1/sqrt(x*x+y*y+z*z)); }
-  double dot(const Vec &b) const { return x*b.x+y*b.y+z*b.z; }
+  float dot(const Vec &b) const { return x*b.x+y*b.y+z*b.z; }
   Vec operator%(Vec &b){return Vec(y*b.z-z*b.y,z*b.x-x*b.z,x*b.y-y*b.x);} // cross
-  double magnitude(){return sqrt(x*x+y*y+z*z);}
+  float magnitude(){return sqrt(x*x+y*y+z*z);}
 };
 
 struct Ray { Vec o, d; Ray(Vec o_, Vec d_) : o(o_), d(d_) {} };
@@ -96,6 +96,11 @@ class Sphere{
 			if (det<0) return 0; else det=sqrt(det);
 
 			return (t=b-det)>eps ? t : ((t=b+det)>eps ? t : 0);
+		}
+
+		bool intersect(const Vec &v) const { // check if point is on sphere
+			return ((v.x - p.x)*(v.x - p.x) + (v.y - p.y)*(v.y - p.y) + (v.z - p.z)*(v.z - p.z) > ((rad*rad) - 10000)
+					&& (v.x - p.x)*(v.x - p.x) + (v.y - p.y)*(v.y - p.y) + (v.z - p.z)*(v.z - p.z) < ((rad*rad) + 10000))  ? true : false;
 		}
 };
 
@@ -149,8 +154,7 @@ class Camera{
 };
 
 Sphere spheres[] = {
-	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Vec(),Vec(.25,.75,.25),DIFF), //Scene: radius, position, emission, color, material
-	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Vec(),Vec(.25,.75,.25),DIFF),//Left
+	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Vec(),Vec(.25,.75,.25),DIFF),//Left   //Scene: radius, position, emission, color, material
 	Sphere(1e5, Vec(-1e5+99,40.8,81.6),Vec(),Vec(.75,.25,.25),DIFF),//Rght
 	Sphere(1e5, Vec(50,40.8, 1e5),     Vec(),Vec(.75,.75,.75),DIFF),//Back
 	Sphere(1e5, Vec(50,40.8,-1e5+170), Vec(),Vec(),           DIFF),//Frnt
@@ -232,7 +236,6 @@ inline Vec show_state_space(const Ray &r, std::map<Key,ColorValue> *dict){
 	int id = 0;                             // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
 	Vec x_reduced = Vec(ceil((float) x.x / 10),ceil((float) x.y /10),ceil((float) x.z /10));
-
 	Key key = {x_reduced.x, x_reduced.y, x_reduced.z};
 	ColorValue value = {x_reduced.x/10 * (rand() / float(RAND_MAX)), x_reduced.y/10 * (rand() / float(RAND_MAX)), x_reduced.z/10 *(rand() / float(RAND_MAX))};
 	std::map<Key, ColorValue> &addrDict = *dict;
@@ -243,21 +246,45 @@ inline Vec show_state_space(const Ray &r, std::map<Key,ColorValue> *dict){
 	return Vec(addrDict[key][0], addrDict[key][1], addrDict[key][2]);
 }
 
-inline void create_state_space(const Vec& x, std::map<Key,QValue> *dict){
-	Vec x_reduced = Vec(ceil((float) x.x / 10),ceil((float) x.y /10),ceil((float) x.z /10));
-	Key key = {x_reduced.x, x_reduced.y, x_reduced.z};
-	QValue value = {x_reduced.x/10 * (rand() / float(RAND_MAX)), x_reduced.y/10 * (rand() / float(RAND_MAX)), x_reduced.z/10 *(rand() / float(RAND_MAX))};
+inline int create_state_space(std::map<Key,QValue> *dict){
 	std::map<Key, QValue> &addrDict = *dict;
-	if (addrDict.count(key) < 1) {
-	  // not found, x
-		addrDict[key] = {1,1,1};
+	int count = 0;
+	float n= sizeof(spheres)/sizeof(Sphere);
+	for (int x = 0; x < 100; x++){
+		for (int y = -1; y < 82; y ++){
+			for (int z = -1; z < 171; z ++){
+				Vec vec = Vec(x,y,z);
+				for(int i=int(n);i--;){
+					if (spheres[i].intersect(vec)){
+						Vec x_reduced = Vec(ceil((float) vec.x / 10),ceil((float) vec.y /10),ceil((float) vec.z /10));
+						Key key = {x_reduced.x, x_reduced.y, x_reduced.z};
+						QValue value = {x_reduced.x/10 * (rand() / float(RAND_MAX)), x_reduced.y/10 * (rand() / float(RAND_MAX)), x_reduced.z/10 *(rand() / float(RAND_MAX))};
+						if (addrDict.count(key) < 1) {
+							addrDict[key] = value;
+							count += 1;
+						}
+						//std::cout << float(key[0]) << float(key[1]) << float(key[2]) << std::endl;
+						}
+				}
+			}
+		}
 	}
+	return count;
 }
 
-
-inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_length, std::map<Key,QValue> *dict){
+inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_length,std::map<Key,QValue>* dict ){
 	int id = 0;                             // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
+
+	std::map<Key, QValue> &addrDict = *dict;
+	Vec x_reduced = Vec(ceil((float) x.x / 10),ceil((float) x.y /10),ceil((float) x.z /10));
+	Key key = {x_reduced.x, x_reduced.y, x_reduced.z};
+    if(addrDict.count(key) >0){
+    	return Vec(addrDict[key][0], addrDict[key][1], addrDict[key][2]);
+    }else{
+    	return(Vec(0,0,0));
+    }
+
 
 	Sphere &obj = spheres[id];              // the hit object
 	Vec n = (x - obj.p).norm();				// sphere normal
@@ -296,7 +323,7 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_len
 		intersect(Ray(x,d.norm()), t, id);
 	}
 	*path_length = *path_length + t;
-    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi, path_length, dict)) * PDF_inverse * BRDF;			// get color in recursive function
+    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi, path_length,dict)) * PDF_inverse * BRDF;			// get color in recursive function
   }
 
   /*
@@ -334,8 +361,16 @@ int main(int argc, char *argv[]){
  // Average path length
   float path_length = 0;
   float* ptrPath_length = &path_length;
- // #pragma omp parallel for schedule(dynamic, 1) private(r)       // OpenMP. Each loop should be run in its own thread
 
+  // Q LEARNING MODULE
+  std::cout << "Initializing Q-Table...." << std::endl;
+  int count;;
+  count = create_state_space(dict);
+  std::cout << count << std::endl;
+
+ /*for (const auto &p : *dict) {
+      std::cout << "KEY: " << p.first[0] << " " << p.first[1] << " " <<  p.first[2] << " " <<  " value: " <<  p.second[0] << " " <<  p.second[1] << " " << p.second[2]  <<'\n';
+  }*/
 
   // LOOP OVER ALL IMAGE PIXELS
  for (int y=0, i=0; y<h; y++){                       // Loop over image rows
@@ -354,11 +389,6 @@ int main(int argc, char *argv[]){
    }
   }
   std::cout << path_length/(samps*w*h);
-
-
-  for (const auto &p : *dict) {
-      std::cout << "KEY: " << p.first[0] << " " << p.first[1] << " " <<  p.first[2] << " " <<  " value: " <<  p.second[0] << " " <<  p.second[1] << " " << p.second[2]  <<'\n';
-  }
 
 
   FILE *f = fopen("image_test.ppm", "w");         // Write image to PPM file.
