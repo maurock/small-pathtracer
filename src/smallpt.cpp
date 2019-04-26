@@ -11,48 +11,17 @@
 #include <iostream>
 #include <array>
 #include <chrono>
+
+#include "utilities.h"
 using namespace std;
 using namespace std::chrono;
 
-#define RAND48_MULT_0   (0xe66d)
-#define RAND48_MULT_1   (0xdeec)
-#define RAND48_MULT_2   (0x0005)
-#define RAND48_ADD      (0x000b)
 
 const int NUMBER_OBJ = 9;
-unsigned short _rand48_add = RAND48_ADD;
-unsigned short _rand48_mult[3] = {
-    RAND48_MULT_0,
-    RAND48_MULT_1,
-    RAND48_MULT_2
-};
+using Key = std::array<float, 3>;
+using QValue = std::array<float, 3>;
+using ColorValue = std::array<float, 3>;
 
-void _dorand48(unsigned short xseed[3])
-{
-    unsigned long accu;
-    unsigned short temp[2];
-
-    accu = (unsigned long)_rand48_mult[0] * (unsigned long)xseed[0] +
-        (unsigned long)_rand48_add;
-    temp[0] = (unsigned short)accu;        /* lower 16 bits */
-    accu >>= sizeof(unsigned short) * 8;
-    accu += (unsigned long)_rand48_mult[0] * (unsigned long)xseed[1] +
-        (unsigned long)_rand48_mult[1] * (unsigned long)xseed[0];
-    temp[1] = (unsigned short)accu;        /* middle 16 bits */
-    accu >>= sizeof(unsigned short) * 8;
-    accu += _rand48_mult[0] * xseed[2] + _rand48_mult[1] * xseed[1] + _rand48_mult[2] * xseed[0];
-    xseed[0] = temp[0];
-    xseed[1] = temp[1];
-    xseed[2] = (unsigned short)accu;
-}
-
-double erand48(unsigned short xseed[3])
-{
-    _dorand48(xseed);
-    return ldexp((double)xseed[0], -48) +
-        ldexp((double)xseed[1], -32) +
-        ldexp((double)xseed[2], -16);
-}
 
 struct Vec {
   double x, y, z;                  // position, also color (r,g,b)
@@ -305,6 +274,7 @@ inline Vec normal(Vec &point, Vec &center) {
 	return (point - center).norm();
 }
 
+
 inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_length ){
 	Hit_records hit;
 	int id = 0;                             // initialize id of intersected object
@@ -312,7 +282,6 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 	Hitable* &obj = rect[id];				// the hit object
 	Vec nl = obj->normal(r, hit, x);
 	Vec f = hit.c;							// object color
-	std::cout << depth << std::endl;
 	double p = f.x > f.y && f.x > f.z ? f.x : f.y > f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
 	if (++depth > 5 || !p) {		 // Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
 		if (erand48(Xi) < p) {
@@ -330,7 +299,7 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 	double PDF_inverse = 1;
 	double BRDF = 1;
 	double t; 	// distance to intersection
-	if (q < 0){
+	if (q < 1){
 		d = light_sampling(nl, x, Xi);
 	    intersect(Ray(x, d.norm()), t, id);
 		if(id != 6){
