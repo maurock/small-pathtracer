@@ -19,7 +19,7 @@ using namespace std::chrono;
 #define RAND48_MULT_2   (0x0005)
 #define RAND48_ADD      (0x000b)
 
-const int NUMBER_OBJ = 10;
+const int NUMBER_OBJ = 9;
 unsigned short _rand48_add = RAND48_ADD;
 unsigned short _rand48_mult[3] = {
     RAND48_MULT_0,
@@ -66,15 +66,114 @@ struct Vec {
   Vec mult(const Vec &b) const { return Vec(x*b.x,y*b.y,z*b.z); }
   Vec& norm(){ return *this = *this * (1/sqrt(x*x+y*y+z*z)); }
   double dot(const Vec &b) const { return x*b.x+y*b.y+z*b.z; }
-  Vec operator%(Vec &b){return Vec(y*b.z-z*b.y,z*b.x-x*b.z,x*b.y-y*b.x);} // cross
-  double magnitude(){return sqrt(x*x+y*y+z*z);}
+  Vec operator%(Vec &b){ return Vec(y*b.z-z*b.y,z*b.x-x*b.z,x*b.y-y*b.x);} // cross
+  double magnitude(){ return sqrt(x*x+y*y+z*z);}
 };
 
 struct Ray { Vec o, d; Ray(Vec o_, Vec d_) : o(o_), d(d_) {} };
 enum Refl_t { DIFF, SPEC, REFR };  // material types, used in radiance()
 
+struct Hit_records {		// Store object element
+	Refl_t refl;
+	Vec c;
+	Vec e;
+};
 
-class Sphere{
+class Hitable {
+	// a pure virtual function makes sure we always override the function hit
+	public:
+		virtual double intersect(const Ray &r) const = 0;
+		virtual Vec normal(const Ray &r, Hit_records &hit, Vec &x) const = 0;
+};
+
+class Rectangle_xz : public Hitable {
+	public:
+		double x1, x2, z1, z2, y;
+		Vec e, c;         // emission, color
+		Refl_t refl;      // reflection type (DIFFuse, SPECular, REFRactive)
+		Rectangle_xz(double x1_,  double x2_, double z1_, double z2_, double y_, Vec e_, Vec c_, Refl_t refl_):
+		x1(x1_), x2(x2_), z1(z1_), z2(z2_), y(y_), e(e_), c(c_), refl(refl_) {}
+
+		double intersect(const Ray &r) const { // returns distance, 0 if no hit
+			double t = (y-r.o.y)/r.d.y;		// ray.y = t* dir.y
+			float x = r.o.x + r.d.x*t;
+			float z = r.o.z + r.d.z*t;
+			if(x < x1 || x > x2 || z < z1 || z > z2 || t < 0){
+				t = 0;
+				return 0;
+			} else {
+				return t;
+			}
+		}
+
+		Vec normal(const Ray &r, Hit_records &hit, Vec &x) const {
+			Vec n = Vec(0,1,0);
+			hit.refl = refl;
+			hit.c = c;
+			hit.e = e;
+			return n.dot(r.d) < 0 ? n : n * -1;
+		}
+};
+
+class Rectangle_xy : public Hitable{
+	public:
+		double x1, x2, y1, y2, z;
+		Vec e, c;         // emission, color
+		Refl_t refl;      // reflection type (DIFFuse, SPECular, REFRactive)
+		Rectangle_xy(double x1_,  double x2_, double y1_, double y2_, double z_, Vec e_, Vec c_, Refl_t refl_):
+		x1(x1_), x2(x2_), y1(y1_), y2(y2_), z(z_), e(e_), c(c_), refl(refl_) {}
+
+		double intersect(const Ray &r) const { // returns distance, 0 if no hit
+			double t = (z-r.o.z)/r.d.z;
+			float x = r.o.x + r.d.x*t;
+			float y = r.o.y + r.d.y*t;
+			if(x < x1 || x > x2 || y < y1 || y > y2 || t < 0){
+				t = 0;
+				return 0;
+			}else{
+				return t;
+			}
+		}
+
+		Vec normal(const Ray &r, Hit_records &hit, Vec &x) const {
+			Vec n = Vec(0,0,1);
+			hit.refl = refl;
+			hit.c = c;
+			hit.e = e;
+			return n.dot(r.d) < 0 ? n : n * -1;
+		}
+};
+
+class Rectangle_yz : public Hitable {
+	public:
+		double y1, y2, z1, z2, x;
+		Vec e, c;         // emission, color
+		Refl_t refl;      // reflection type (DIFFuse, SPECular, REFRactive)
+		Rectangle_yz(double y1_,  double y2_, double z1_, double z2_, double x_, Vec e_, Vec c_, Refl_t refl_):
+		y1(y1_), y2(y2_), z1(z1_), z2(z2_), x(x_), e(e_), c(c_), refl(refl_) {}
+
+		double intersect(const Ray &r) const { // returns distance, 0 if no hit
+			double t = (x-r.o.x)/r.d.x;
+			float y = r.o.y + r.d.y*t;
+			float z = r.o.z + r.d.z*t;
+			if(y < y1 || y > y2 || z < z1 || z > z2 || t < 0){
+				t = 0;
+				return 0;
+			}else{
+				return t;
+			}
+		}
+
+		Vec normal(const Ray &r, Hit_records &hit, Vec &x) const {
+			Vec n = Vec(1,0,0);
+			hit.refl = refl;
+			hit.c = c;
+			hit.e = e;
+			return n.dot(r.d) < 0 ? n : n * -1;
+		}
+};
+
+class Sphere : public Hitable {
 	public:
 		double rad;       // radius
 		Vec p, e, c;      // position, emission, color
@@ -83,36 +182,23 @@ class Sphere{
 		rad(rad_), p(p_), e(e_), c(c_), refl(refl_) {}
 
 		double intersect(const Ray &r) const { // returns distance, 0 if no hit
-			Vec op = p-r.o; // Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0
+			Vec op = p-r.o; 				// Solve t^2*d.d + 2*t*(o-p).d + (o-p).(o-p)-R^2 = 0
 			double t, eps=1e-4;
 			double b = op.dot(r.d);
 			double det = b*b-op.dot(op)+rad*rad;
 			if (det<0) return 0; else det=sqrt(det);
-
 			return (t=b-det)>eps ? t : ((t=b+det)>eps ? t : 0);
 		}
-};
 
-/*
-class Rectangle_xz {
-	public:
-		double x1, x2, z1, z2, y;
-		Vec e, c;         // emission, color
-		Refl_t refl;      // reflection type (DIFFuse, SPECular, REFRactive)
-
-		Rectangle_xz(double x1_,  double x2_, double z1_, double z2_, double y_, Vec e_, Vec c_, Refl_t refl_):
-		x1(x1_), x2(x2_), z1(z1_), z2(z2_), y(y_), e(e_), c(c_), refl(refl_) {}
-		double intersect(const Ray &r) const { // returns distance, 0 if no hit
-			double t = (y-r.o.y)/r.d.y;		// ray.y = t* dir.y
-			float x = r.o.x + r.d.x*t;
-			float z = r.o.z + r.d.z*t;
-			if(x < x1 || x > x2 || z < z1 || z > z2){
-				return 0;
-			}else{
-				return t;
-			}
+		Vec normal(const Ray &r, Hit_records &hit, Vec &x) const {
+			Vec n = (x - p).norm();						// sphere normal
+			hit.refl = refl;
+			hit.c = c;
+			hit.e = e;
+			return n.dot(r.d) < 0 ? n : n * -1;			// properly orient the normal. If I am inside the sphere, the normal needs to point towards the inside
+														// indeed, the angle would be < 90, so dot() < 0. Also, if in a glass it enters or exits
 		}
-};*/
+};
 
 class Camera{
 	public:
@@ -142,18 +228,16 @@ class Camera{
 		Vec vertical;
 };
 
-Sphere spheres[] = {
-	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Vec(),Vec(.25,.75,.25),DIFF), //Scene: radius, position, emission, color, material
-	Sphere(1e5, Vec( 1e5+1,40.8,81.6), Vec(),Vec(.25,.75,.25),DIFF),//Left
-	Sphere(1e5, Vec(-1e5+99,40.8,81.6),Vec(),Vec(.75,.25,.25),DIFF),//Rght
-	Sphere(1e5, Vec(50,40.8, 1e5),     Vec(),Vec(.75,.75,.75),DIFF),//Back
-	Sphere(1e5, Vec(50,40.8,-1e5+170), Vec(),Vec(),           DIFF),//Frnt
-	Sphere(1e5, Vec(50, 1e5, 81.6),    Vec(),Vec(.75,.75,.75),DIFF),//Botm
-	Sphere(1e5, Vec(50,-1e5+81.6,81.6),Vec(),Vec(.75,.75,.75),DIFF),//Top
-	Sphere(16.5,Vec(27,16.5,47),       Vec(),Vec(1,1,1)*.999, DIFF),//Mirr
-	//Sphere(16.5,Vec(73,16.5,78),       Vec(),Vec(1,1,1)*.999, REFR),//Glas
-	Sphere(16.5,Vec(73,16.5,78),		Vec(),Vec(.75,.75,.75), DIFF),//Glas
-	Sphere(600, Vec(50,681.6-.27,81.6),Vec(12,12,12),  Vec(), DIFF) //Light		Radius = 18 (trigonometry)
+Hitable *rect[NUMBER_OBJ] = {
+		new Rectangle_xy(1, 99, 0, 81.6, 0, Vec(), Vec(.75,.75,.75), DIFF), 		// Front
+		new Rectangle_xy(1, 99, 0, 81.6, 170, Vec(), Vec(.75,.75,.75), DIFF),		// Back
+		new Rectangle_yz(0, 81.6, 0, 170, 1, Vec(), Vec(.25,.75,.25), DIFF),	// Left
+		new Rectangle_yz(0, 81.6, 0, 170, 99, Vec(), Vec(.75,.25,.25), DIFF),	// Right
+		new Rectangle_xz(1, 99, 0, 170, 0, Vec(), Vec(.75,.75,.75), DIFF),		// Bottom
+		new Rectangle_xz(1,99, 0, 170, 81.6, Vec(), Vec(.75,.75,.75), DIFF),	// Top
+		new Rectangle_xz(32, 68, 63, 96, 81.5, Vec(12,12,12), Vec(), DIFF),		// Light
+		new Sphere(16.5,Vec(27,16.5,47), Vec(),Vec(1,1,1)*.999, DIFF),	//Mirr
+		new Sphere(16.5,Vec(73,16.5,78), Vec(),Vec(.75,.75,.75), DIFF)  //Glas
 };
 
 // clamp makes sure that the set is bounded (used for radiance() )
@@ -163,11 +247,11 @@ inline double clamp(double x){ return x<0 ? 0 : x>1 ? 1 : x; }
 inline int toInt(double x){ return int(pow(clamp(x),1/2.2)*255+.5); }
 
 inline bool intersect(const Ray &r, double &t, int &id){
-  double n= sizeof(spheres)/sizeof(Sphere); //Divide allocation of byte of the whole scene, by allocation in byte of one single element
+  double n= NUMBER_OBJ; //Divide allocation of byte of the whole scene, by allocation in byte of one single element
   double d;
   double inf=t=1e20;
   for(int i=int(n);i--;) {
-	  if((d=spheres[i].intersect(r))&&d<t){	// Distance of hit point
+	  if((d=rect[i]->intersect(r))&&d<t){	// Distance of hit point
 		  t=d;
 		  id=i;
 	  }
@@ -222,23 +306,24 @@ inline Vec normal(Vec &point, Vec &center) {
 }
 
 inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_length ){
+	Hit_records hit;
 	int id = 0;                             // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
-	Sphere &obj = spheres[id];              // the hit object
-	Vec n = (x - obj.p).norm();				// sphere normal
-	Vec nl = n.dot(r.d) < 0 ? n : n * -1;	// properly orient the normal. If I am inside the sphere, the normal needs to point towards the inside
-											// indeed, the angle would be < 90, so dot() < 0. Also, if in a glass it enters or exits
-	Vec f = obj.c;     					// sphere color
+	Hitable* &obj = rect[id];				// the hit object
+	Vec nl = obj->normal(r, hit, x);
+	Vec f = hit.c;							// object color
+	std::cout << depth << std::endl;
 	double p = f.x > f.y && f.x > f.z ? f.x : f.y > f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
-	if (++depth > 5 || !p) {
+	if (++depth > 5 || !p) {		 // Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
 		if (erand48(Xi) < p) {
 			f = f * (1 / p);
 		} else {
-			return obj.e; // Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
+			return hit.e;
 		}
 	}
-  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  	  //This is based on the reflectivity, and the BRDF scaled to compensate for it.
-  if (obj.refl == DIFF){                   // Ideal DIFFUSE reflection.
+
+	// This is based on the reflectivity, and the BRDF scaled to compensate for it.
+	if (hit.refl == DIFF){                   // Ideal DIFFUSE reflection.
 	// TOTAL RANDOM SCATTERING
 	Vec d;
 	double q = rand() / double(RAND_MAX);
@@ -247,12 +332,12 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 	double t; 	// distance to intersection
 	if (q < 0){
 		d = light_sampling(nl, x, Xi);
-	    intersect(Ray(x,d.norm()), t, id);
-		if(id != 9){
+	    intersect(Ray(x, d.norm()), t, id);
+		if(id != 6){
 			d = random_scattering(nl, Xi);
-			intersect(Ray(x,d.norm()), t, id);
+			intersect(Ray(x, d.norm()), t, id);
 		}else{
-			PDF_inverse = fabs((1018 * d.norm().dot(Vec(0,1,0))) / (t*t));		//PDF = r^2 / (A * cos(theta_light))
+			PDF_inverse = fabs((1296 * d.norm().dot(Vec(0,1,0))) / (t*t));		//PDF = r^2 / (A * cos(theta_light))
 			BRDF = fabs(d.norm().dot(nl) / M_PI);
 		}
 	}
@@ -261,9 +346,8 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 		intersect(Ray(x,d.norm()), t, id);
 	}
 	*path_length = *path_length + t;
-    return obj.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi, path_length)) * PDF_inverse * BRDF;				// get color in recursive function
+    return hit.e + f.mult(radiance(Ray(x,d.norm()),depth,Xi, path_length)) * PDF_inverse * BRDF;				// get color in recursive function
   }
-
   /*
   else if (obj.refl == SPEC)            // Ideal SPECULAR reflection
     return obj.e + f.mult(radiance(Ray(x,r.d-n*2*n.dot(r.d)),depth,Xi));
@@ -309,15 +393,15 @@ int main(int argc, char *argv[]){
         	 float v = float((h-y-1) - 0.5 + rand() / double(RAND_MAX)) / float(h);
         	 Ray d = cam.get_ray(u,v);
              r = r + radiance(Ray(cam.origin,d.d.norm()),0,Xi,ptrPath_length)*(1./samps);  // The average is the same as averaging at the end
-          } // Camera rays are pushed ^^^^^ forward to start in interior
+        } // Camera rays are pushed ^^^^^ forward to start in interior
     	c[i] = c[i] + Vec(clamp(r.x),clamp(r.y),clamp(r.z));
     	i++;
     	r = Vec();
-   }
+    }
   }
   std::cout << path_length/(samps*w*h);
 
-  FILE *f = fopen("image_512pps_explicitlight_test.ppm", "w");         // Write image to PPM file.
+  FILE *f = fopen("image_light_test.ppm", "w");         // Write image to PPM file.
   fprintf(f, "P3\n%d %d\n%d\n", w, h, 255);
   for (int i=0; i<w*h; i++)
     fprintf(f,"%d %d %d ", toInt(c[i].x), toInt(c[i].y), toInt(c[i].z));
