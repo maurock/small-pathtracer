@@ -16,7 +16,7 @@
 using namespace std;
 using namespace std::chrono;
 
-const int NUMBER_OBJ = 9;
+const int NUMBER_OBJ = 17;
 using Key = std::array<float, 3>;
 using QValue = std::array<float, 3>;
 using ColorValue = std::array<float, 3>;
@@ -61,16 +61,17 @@ struct Vec {
 	}
 };
 
+// LOOKFROM for the Camera
+const Vec LOOKFROM = Vec(50, 40, 168);
+
 struct Ray {
 	Vec o, d;
-	Ray(Vec o_, Vec d_) :
-			o(o_), d(d_) {
-	}
+	Ray(Vec o_, Vec d_) : o(o_), d(d_) {}
 };
-enum Refl_t {
+
+enum Refl_t {				// material types, used in radiance()
 	DIFF, SPEC, REFR
 };
-// material types, used in radiance()
 
 struct Hit_records {		// Store object element
 	Refl_t refl;
@@ -78,12 +79,13 @@ struct Hit_records {		// Store object element
 	Vec e;
 };
 
-class Hitable {
-	// a pure virtual function makes sure we always override the function hit
+class Hitable {			// a pure virtual function makes sure we always override the function hit
 public:
 	virtual double intersect(const Ray &r) const = 0;
 	virtual bool intersect(const Vec &vec) const = 0;
 	virtual Vec normal(const Ray &r, Hit_records &hit, Vec &x) const = 0;
+	virtual std::array<float, 3> add_key(Vec &pos) const = 0;
+	virtual std::array<float, 3> add_value(std::array<float, 3>& x_reduced) const = 0;
 
 };
 
@@ -120,6 +122,16 @@ public:
 		hit.e = e;
 		return n.dot(r.d) < 0 ? n : n * -1;
 	}
+
+	std::array<float, 3> add_key(Vec& pos) const {
+		Vec x_reduced = Vec(ceil((float) pos.x / 10), pos.y / 10,ceil((float) pos.z / 10));
+		return { x_reduced.x, x_reduced.y, x_reduced.z};
+	}
+
+	std::array<float, 3> add_value(std::array<float, 3>& x_reduced) const {
+		return { x_reduced[0] / 10 * (rand() / float(RAND_MAX)), x_reduced[1] * (rand() / float(RAND_MAX)),
+				x_reduced[2]  / 10 * (rand() / float(RAND_MAX)) };
+	}
 };
 
 class Rectangle_xy: public Hitable {
@@ -153,6 +165,16 @@ public:
 		hit.e = e;
 		return n.dot(r.d) < 0 ? n : n * -1;
 	}
+
+	std::array<float, 3> add_key(Vec& pos) const {
+		Vec x_reduced = Vec(ceil((float) pos.x / 10), ceil((float) pos.y / 10),	pos.z / 10);
+		return { x_reduced.x, x_reduced.y, x_reduced.z};
+	}
+
+	std::array<float, 3> add_value(std::array<float, 3>& x_reduced) const {
+		return { x_reduced[0] / 10 * (rand() / float(RAND_MAX)), x_reduced[1] 	/ 10 * (rand() / float(RAND_MAX)),
+				x_reduced[2]  * (rand() / float(RAND_MAX)) };
+	}
 };
 
 class Rectangle_yz: public Hitable {
@@ -185,6 +207,16 @@ public:
 		hit.c = c;
 		hit.e = e;
 		return n.dot(r.d) < 0 ? n : n * -1;
+	}
+
+	std::array<float, 3> add_key(Vec& pos) const {
+		Vec x_reduced = Vec( pos.x / 10, ceil((float) pos.y / 10),	ceil((float) pos.z / 10));
+		return { x_reduced.x, x_reduced.y, x_reduced.z};
+	}
+
+	std::array<float, 3> add_value(std::array<float, 3>& x_reduced) const {
+		return { x_reduced[0] * (rand() / float(RAND_MAX)), x_reduced[1] 	/ 10 * (rand() / float(RAND_MAX)),
+				x_reduced[2]  / 10 * (rand() / float(RAND_MAX)) };
 	}
 };
 
@@ -260,8 +292,22 @@ Hitable *rect[NUMBER_OBJ] = {
 	new Rectangle_xz(1, 99, 0, 170, 0, Vec(), Vec(.75, .75, .75), DIFF),		// Bottom
 	new Rectangle_xz(1, 99, 0, 170, 81.6, Vec(), Vec(.75, .75, .75), DIFF),		// Top
 	new Rectangle_xz(32, 68, 63, 96, 81.5, Vec(12, 12, 12), Vec(), DIFF),		// Light
-	new Sphere(16.5,Vec(27,16.5,47), Vec(),Vec(1,1,1)*.999, DIFF),			//Mirr
-	new Sphere(16.5,Vec(73,16.5,78), Vec(),Vec(.75,.75,.75), DIFF)  			//Glas
+
+
+	/*new Sphere(16.5,Vec(27,16.5,47), Vec(),Vec(1,1,1)*.999, DIFF),			//Mirr
+	new Sphere(16.5,Vec(73,16.5,78), Vec(),Vec(.75,.75,.75), DIFF) */  			//Glas
+
+	new Rectangle_xy(12, 42, 0, 50, 32, Vec(), Vec(1,1,1), DIFF),				// Tall box
+	new Rectangle_xy(12, 42, 0, 50, 62, Vec(), Vec(1,1,1), DIFF),
+	new Rectangle_yz(0, 50, 32, 62, 12, Vec(), Vec(1,1,1), DIFF),
+	new Rectangle_yz(0, 50, 32, 62, 42 , Vec(), Vec(1,1,1), DIFF),
+	new Rectangle_xz(12, 42, 32, 62, 50, Vec(), Vec(1,1,1), DIFF),
+																				// Short box
+	new Rectangle_xy(63, 88, 0, 25, 63, Vec(), Vec(1,1,1), DIFF),
+	new Rectangle_xy(63, 88, 0, 25, 88, Vec(), Vec(1,1,1), DIFF),
+	new Rectangle_yz(0, 25, 63, 88, 63, Vec(), Vec(1,1,1), DIFF),
+	new Rectangle_yz(0, 25, 63, 88, 88, Vec(), Vec(1,1,1), DIFF),
+	new Rectangle_xz(63, 88, 63, 88, 25, Vec(), Vec(1,1,1), DIFF)
 };
 
 // clamp makes sure that the set is bounded (used for radiance() )
@@ -341,15 +387,16 @@ inline int create_state_space(std::map<Key, QValue> *dict) {
 		for (int y = -1; y < 85; y++) {
 			for (int z = -1; z < 171; z++) {
 				Vec vec = Vec(x, y, z);
-				Ray r = Ray(Vec(50, 40, 168), (vec - Vec(50, 40, 168)).norm());
+				Ray r = Ray(LOOKFROM, (vec - LOOKFROM).norm());
 				int id = 0;
 				Vec pos = hittingPoint(r, id);
-				Vec x_reduced = Vec(ceil((float) pos.x / 10), ceil((float) pos.y / 10),	ceil((float) pos.z / 10));
-				Key key = { x_reduced.x, x_reduced.y, x_reduced.z };
-				QValue value = { x_reduced.x / 10 * (rand() / float(RAND_MAX)), x_reduced.y	/ 10 * (rand() / float(RAND_MAX)),
-							x_reduced.z / 10 * (rand() / float(RAND_MAX)) };
+				Key key = rect[id]->add_key(pos);
+				QValue value = rect[id]->add_value(key);
+
 				if (addrDict.count(key) < 1) {
 					addrDict[key] = value;
+					if(key[0]==0 || key[1] == 0 || key[2] == 0){
+						std::cout << key[0] << " " << key[1] << " " << key[2] << std::endl;}
 					count += 1;
 				}
 			}
@@ -358,15 +405,42 @@ inline int create_state_space(std::map<Key, QValue> *dict) {
 	return count;
 }
 
-inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_length, std::map<Key, QValue> *dict) {
+inline Vec center_state(std::map<Key, QValue> *dict){
+	for (auto const& x : *dict)
+	{
+	    Vec state_red = ((x.first[0]*10)+5, (x.first[1]*10)+5, (x.first[2]*10)+5);
+	    Ray r = Ray(LOOKFROM, (state_red - LOOKFROM).norm());
+	    for(int id = 0; id < NUMBER_OBJ; id ++){
+	    	Vec x = hittingPoint(r, id);
+	    }
+	}
+}
+
+inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_length, std::map<Key, QValue> *dict, int& counter_red) {
 	Hit_records hit;
 	int id = 0;                           // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
 
 	std::map<Key, QValue> &addrDict = *dict;
+
+	Key key = rect[id]->add_key(x);
+	/*
 	Vec x_reduced = Vec(ceil((float) x.x / 10), ceil((float) x.y / 10), ceil((float) x.z / 10));
 	Key key = { x_reduced.x, x_reduced.y, x_reduced.z };
+	*/
+	//std::cout << "KEY: " << key[0] << "    X.X: " << x.x << "    KEY[O]*10 - 5: "  << key[0]*10- 5 << std::endl;
+
+	// COLOR RED STATE
+	if( ((x.x > (key[0]*10- 6)) && (x.x < (key[0]*10- 4)) && (x.y > (key[1]*10- 6)) && (x.y < (key[1]*10- 4))) ||
+			((x.x > (key[0]*10- 6)) && (x.x < (key[0]*10- 4)) && (x.z > (key[2]*10- 6)) && (x.z < (key[2]*10- 4)))||
+			((x.y > (key[1]*10- 6)) && (x.y < (key[1]*10- 4)) && (x.z > (key[2]*10- 6)) && (x.z < (key[2]*10- 4)))){
+			counter_red = counter_red + 1;
+			return Vec(1,0,0);
+	}
+	//////////////////////
+
 	return Vec(addrDict[key][0], addrDict[key][1], addrDict[key][2]);
+
 	Hitable* &obj = rect[id];				// the hit object
 	Vec nl = obj->normal(r, hit, x);
 	Vec f = hit.c;							// object color
@@ -402,7 +476,7 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 			intersect(Ray(x, d.norm()), t, id);
 		}
 		*path_length = *path_length + t;
-		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict)) * PDF_inverse * BRDF;// get color in recursive function
+		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red)) * PDF_inverse * BRDF;// get color in recursive function
 	}
 	/*
 	 else if (obj.refl == SPEC)            // Ideal SPECULAR reflection
@@ -436,12 +510,15 @@ int main(int argc, char *argv[]) {
 	Vec *c = new Vec[w * h]; 	// The image
 	std::map<Key, QValue>* dict = new std::map<Key, QValue>;
 
+	// TEMPORARY COUNTER
+	int counter_red = 0;
+
 	// Create states
 	int number_states = create_state_space(dict);
-	std::cout << number_states << std::endl;
+	std::cout << "NUMBER STATES: " << number_states << std::endl;
 
 	// Set up camera
-	Camera cam(Vec(50, 40, 168), Vec(50, 40, 5), Vec(0, 1, 0), 65, float(w) / float(h));
+	Camera cam(LOOKFROM, Vec(50, 40, 5), Vec(0, 1, 0), 65, float(w) / float(h));
 
 	// Average path length
 	double path_length = 0;
@@ -456,16 +533,19 @@ int main(int argc, char *argv[]) {
 				float u = float(x - 0.5 + rand() / double(RAND_MAX)) / float(w);
 				float v = float((h - y - 1) - 0.5 + rand() / double(RAND_MAX)) / float(h);
 				Ray d = cam.get_ray(u, v);
-				r = r + radiance(Ray(cam.origin, d.d.norm()), 0, Xi, ptrPath_length, dict) * (1. / samps); // The average is the same as averaging at the end
+				r = r + radiance(Ray(cam.origin, d.d.norm()), 0, Xi, ptrPath_length, dict, counter_red) * (1. / samps); // The average is the same as averaging at the end
 			} // Camera rays are pushed ^^^^^ forward to start in interior
 			c[i] = c[i] + Vec(clamp(r.x), clamp(r.y), clamp(r.z));
 			i++;
 			r = Vec();
 		}
 	}
-	std::cout << path_length / (samps * w * h);
+	std::cout << "PATH LENGTH: " << path_length / (samps * w * h) << std::endl;
 
-	FILE *f = fopen("image_show_state_rect.ppm", "w"); // Write image to PPM file.
+	std::cout << "COUNTER RED : " << counter_red << std::endl;
+
+
+	FILE *f = fopen("show_allrect_differentplane_red_state.ppm", "w"); // Write image to PPM file.
 	fprintf(f, "P3\n%d %d\n%d\n", w, h, 255);
 	for (int i = 0; i < w * h; i++)
 		fprintf(f, "%d %d %d ", toInt(c[i].x), toInt(c[i].y), toInt(c[i].z));
