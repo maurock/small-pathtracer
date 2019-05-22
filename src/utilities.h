@@ -50,4 +50,25 @@ double erand48(unsigned short xseed[3])
         ldexp((double)xseed[2], -16);
 }
 
+// operators for std::array<>
+template<typename T, std::size_t N>
+std::array<T, N> operator*(std::array<T, N>  array, float n) {    // operator* for std::array
+	std::array<T, N> temp;
+	for(int i = 0; i < n; i++){
+		temp[i] = array[i]*n;
+	}
+	return temp;
+}
+
+template<typename T, std::size_t N>
+std::array<T, N> operator+(std::array<T, N>  array1, std::array<T, N>  array2) {    // operator+ for std::array
+	std::array<T, N> temp;
+	for(int i = 0; i < array1.size(); i++){
+		temp[i] = array1[i]+ array2[i];
+	}
+	return temp;
+}
+
+
+
 #endif
