@@ -20,11 +20,11 @@ using namespace std;
 using namespace std::chrono;
 
 const int NUMBER_OBJ = 17;
-const int dim_action_space = 3;
+const int dim_action_space = 24;
 using Key = std::array<float, 3>;
 using QValue = std::array<float, dim_action_space>;
 using ColorValue = std::array<float, 3>;
-float lr = 0.8;
+float lr = 0.4;
 
 struct Vec {
 	double x, y, z;                  // position, also color (r,g,b)
@@ -59,6 +59,9 @@ struct Vec {
 		return x * b.x + y * b.y + z * b.z;
 	}
 	Vec operator%(Vec &b) {
+		return Vec(y * b.z - z * b.y, z * b.x - x * b.z, x * b.y - y * b.x);
+	} // cross
+	Vec operator%(const Vec &b) {
 		return Vec(y * b.z - z * b.y, z * b.x - x * b.z, x * b.y - y * b.x);
 	} // cross
 	double magnitude() {
@@ -123,8 +126,8 @@ public:
 
 	double intersect(const Ray &r) const { // returns distance, 0 if no hit
 		double t = (y - r.o.y) / r.d.y;		// ray.y = t* dir.y
-		float x = r.o.x + r.d.x * t;
-		float z = r.o.z + r.d.z * t;
+		const float& x = r.o.x + r.d.x * t;
+		const float& z = r.o.z + r.d.z * t;
 		if (x < x1 || x > x2 || z < z1 || z > z2 || t < 0) {
 			t = 0;
 			return 0;
@@ -166,8 +169,8 @@ public:
 
 	double intersect(const Ray &r) const { // returns distance, 0 if no hit
 		double t = (z - r.o.z) / r.d.z;
-		float x = r.o.x + r.d.x * t;
-		float y = r.o.y + r.d.y * t;
+		const float& x = r.o.x + r.d.x * t;
+		const float& y = r.o.y + r.d.y * t;
 		if (x < x1 || x > x2 || y < y1 || y > y2 || t < 0) {
 			t = 0;
 			return 0;
@@ -209,8 +212,8 @@ public:
 
 	double intersect(const Ray &r) const { // returns distance, 0 if no hit
 		double t = (x - r.o.x) / r.d.x;
-		float y = r.o.y + r.d.y * t;
-		float z = r.o.z + r.d.z * t;
+		const float& y = r.o.y + r.d.y * t;
+		const float& z = r.o.z + r.d.z * t;
 		if (y < y1 || y > y2 || z < z1 || z > z2 || t < 0) {
 			t = 0;
 			return 0;
@@ -342,8 +345,18 @@ inline int toInt(double x) {
 	return int(pow(clamp(x), 1 / 2.2) * 255 + .5);
 }
 
-inline bool intersect(const Ray &r, float &t, int &id) {
-	double n = NUMBER_OBJ; //Divide allocation of byte of the whole scene, by allocation in byte of one single element
+// Convert spherical coordinates into cartesian
+inline Vec spherToCart(Vec& spher){
+	return Vec(cos(spher.y)*sin(spher.z), sin(spher.y)*cos(spher.z), cos(spher.z));
+}
+
+// convert Cartesian coordinates into spherical
+inline Vec cartToSpher(Vec& cart){
+	return Vec(1, atan(cart.y/cart.x), atan((sqrt(cart.x*cart.x + cart.y*cart.y))/cart.z) );
+}
+
+inline bool intersect(const Ray &r, double &t, int &id) {
+	const double& n = NUMBER_OBJ; //Divide allocation of byte of the whole scene, by allocation in byte of one single element
 	double d;
 	double inf = t = 1e20;
 	for (int i = 0; i < n; i++) {
@@ -391,15 +404,22 @@ inline Vec light_sampling(const Vec& nl, const Vec& hit, unsigned short *Xi) {
 }
 
 inline Vec hittingPoint(const Ray &r, int &id) {
-	float t;                             // distance to intersection
+	double t;                             // distance to intersection
 	if (!intersect(r, t, id))
 		return Vec();
-	Vec x = r.o + r.d * t;// ray intersection point (t calculated in intersect())
+	const Vec& x = r.o + r.d * t;// ray intersection point (t calculated in intersect())
 	return x;
 }
 
 inline Vec normal(Vec &point, Vec &center) {
 	return (point - center).norm();
+}
+
+inline Vec getTangent(Vec& normal) {
+	Vec new_vector = Vec(normal.x+1, normal.y+1, normal.z+1);		// This cannot be zero, or parallel to the normal.
+															// Usually I need to check, but since all my tangents are (0,0,1),
+															// (0,1,0) and (1,0,0), I don't need to check in this SPECIFIC CASE.
+	return (normal % (new_vector.norm()));
 }
 
 inline int create_state_space(std::map<Key, QValue> *dict) {
@@ -413,13 +433,14 @@ inline int create_state_space(std::map<Key, QValue> *dict) {
 				int id = 0;
 				Vec pos = hittingPoint(r, id);
 				Key key = rect[id]->add_key(pos);
-				QValue value = rect[id]->add_value_color(key);				//To return different colors for each state
+				//QValue value = rect[id]->add_value_color(key);				//To return different colors for each state. If you don't want colors,
+																			//comment this
 				if (addrDict.count(key) < 1) {
-					//QValue value = rect[id]->add_value();			// To initialize Q-values. To return colors, comment this line.
+					QValue value = rect[id]->add_value();			// To initialize Q-values. To return colors, comment this line.
 					addrDict[key] = value;
 
-					if(key[0]==0 || key[1] == 0 || key[2] == 0){
-						std::cout << key[0] << " " << key[1] << " " << key[2] << std::endl;}
+					/*if(key[0]==0 || key[1] == 0 || key[2] == 0){
+						std::cout << key[0] << " " << key[1] << " " << key[2] << std::endl;}*/
 					count += 1;
 				}
 			}
@@ -443,20 +464,30 @@ inline void initialize_dictAction(std::map<Action, Direction> *dictAction){
 	myFile.close();
 }
 
-inline void updateQtable(Key& state, Key& next_state, Hit_records& hit,std::map<Key, QValue> *dict, int &old_action, float& BRDF, float& cos_theta){
+inline void updateQtable(Key& state, Key& next_state, Hit_records& hit,std::map<Key, QValue> *dict, std::map<Action, Direction> *dictAction, int &old_action, float& BRDF, Vec& nl){
 	std::map<Key, QValue> &addrDict = *dict;
+	std::map<Action, Direction> &addrDictAction = *dictAction;
+
 	float update = 0;
+	float& dict_state = addrDict[state][old_action];
+	std::array<float, dim_action_space>& dict_next_state = addrDict[next_state];
 	if (hit.e.x > 5){		// if light
-		update = std::max({hit.e.x, hit.e.y, hit.e.z});
+		update = dict_state * (1 - lr) + lr* std::max({hit.e.x, hit.e.y, hit.e.z});
 	}else{
-		float dict_state = addrDict[state][old_action];
-		std::array<float, dim_action_space> dict_next_state = addrDict[next_state];
 		float cumulative_q = 0;
-		int dim = sizeof(dict_next_state)/sizeof(dict_next_state[0]);
-		for(int i=0; i< sizeof(dict_next_state)/sizeof(dict_next_state[0]); i++){
-			cumulative_q = dict_next_state[i]+ cumulative_q;
+
+		// Create temporary coordinates system
+		Vec &w = nl.norm();
+		Vec u = getTangent(w);
+		const Vec& v = (u % w);
+
+		for(int i=0; i< dim_action_space; i++){
+			// calculate cos_theta_i
+			Vec action_vector = Vec(u*addrDictAction[i].x + v*addrDictAction[i].y + w* addrDictAction[i].z).norm();
+			const float& cos_theta_i = w.dot(action_vector);
+			cumulative_q = dict_next_state[i] * cos_theta_i + cumulative_q;
 		}
-		update = dict_state * (1 - lr) + cumulative_q * lr * (1/dim) * BRDF * cos_theta;
+		update = dict_state * (1 - lr) + lr * (1/dim_action_space) * cumulative_q *  BRDF;		//maybe BRDF divided by pi
 	}
 	addrDict[state][old_action] = update;
 }
@@ -464,16 +495,18 @@ inline void updateQtable(Key& state, Key& next_state, Hit_records& hit,std::map<
 inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Direction> *dictAction, int &id, Vec &x, Vec &nl, const Ray &r, Struct_states& states_rec) {
 	std::map<Key, QValue> &addrDict = *dict;
 	std::map<Action, Direction> &addrDictAction = *dictAction;
-	Key state = rect[id]->add_key(x);		// coordinates
-	Vec dir = r.d;			// getaround the const Ray problem
-	Vec w = nl.norm();
-	Vec u = (w % dir).norm();
-	Vec v = (u % w);
-	std::array<float, dim_action_space> qvalue = addrDict[state];
+	const Key& state = rect[id]->add_key(x);		// coordinates
+
+	// Create temporary coordinates system
+	Vec& w = nl.norm();
+	const Vec& u = getTangent(w);
+	const Vec& v = (w % u);
+
+	const std::array<float, dim_action_space>& qvalue = addrDict[state];
 	double p = *std::max_element(std::begin(qvalue), std::end(qvalue)); // max Q_value for Russian Roulette
 	Vec point_old_coord;
 	int action;
-	if(p > (rand() / double(RAND_MAX))){		// When Q_value is low, choose random. Else, choose max action
+	if(0.80 > (rand() / double(RAND_MAX))){				// When Q_value is low, choose random. Else, choose max action
 		action = std::distance(qvalue.begin(), std::max_element(qvalue.begin(), qvalue.end()));		// get position max action
 		point_old_coord= addrDictAction[action];
 	}else{
@@ -482,7 +515,20 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
 	}
 	states_rec.old_state = state;
 	states_rec.old_action = action;
-	return  x + (u*point_old_coord.x + v*point_old_coord.y + w*point_old_coord.z); // new_point.x * u + new_point.y * v + new_point.z * w + hitting_point
+
+	// Scatter random inside the selected patch, convert to spherical coordinates for semplicity and then back to cartesian
+	Vec spher_coord = cartToSpher(point_old_coord);
+	spher_coord.z = (0.78*(rand() / double(RAND_MAX)) - 0.39) + spher_coord.z;		// add or subtract randomly range {-22.5, 22.5} degrees to phi, in radian
+	if(point_old_coord.z < 0.33){
+		spher_coord.y = (0.336*(rand() / double(RAND_MAX)) - 0.168) + spher_coord.y;		// math done on the notes: theta - 0.168 < theta < theta - 0.168
+	}else if(point_old_coord.z >= 0.33 && point_old_coord.z < 0.66){
+		spher_coord.y = (0.384*(rand() / double(RAND_MAX)) - 0.192) + spher_coord.y;		// theta - 0.192 < theta < theta - 0.192
+	}else{
+		spher_coord.y = (0.85*(rand() / double(RAND_MAX)) - 0.42) + spher_coord.y;			//theta - 0.42 < theta < theta - 0.42
+	}
+	point_old_coord = spherToCart(spher_coord);
+
+	return (u*point_old_coord.x  + v*point_old_coord.y  + w*point_old_coord.z); // new_point.x * u + new_point.y * v + new_point.z * w + hitting_point
 }
 
 inline Vec visualize_states(std::map<Key, QValue> *dict, int id, Vec x, int& counter_red){
@@ -505,9 +551,15 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 	Hit_records hit;
 	int id = 0;                           // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
-	float BRDF = 1;
+
+	/*if(x.z==0 && x.x!=0){
+		std::cout << "############################################################" << std::endl;
+		std::cout << "COORDINATE_RADIANCE: " << x.x << " " << x.y << " " << x.z << std::endl;
+		std::cout << "############################################################" << std::endl;
+
+	}*/
 	// To visualize states
-	return visualize_states(dict, id, x, counter_red);
+	//return visualize_states(dict, id, x, counter_red);
 
 	Hitable* &obj = rect[id];				// the hit object
 	Vec nl = obj->normal(r, hit, x);
@@ -517,14 +569,20 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 		if (erand48(Xi) < p) {
 			f = f * (1 / p);
 		} else {
+			if(depth>1){		// If gets light, update Q-value
+				Key state = rect[id]->add_key(x);
+				float BRDF = 1;
+				updateQtable(states_rec.old_state, state, hit, dict, dictAction, states_rec.old_action, BRDF , nl);
+			}
 			return hit.e;
 		}
 	}
 	Vec d;
-	float q = rand() / float(RAND_MAX);
+	const float& q = rand() / float(RAND_MAX);
 	float PDF_inverse = 1;
-	float t; 	// distance to intersection
-	bool q_learning_mode = false;
+	float BRDF = 1;
+	double t; 	// distance to intersection
+	bool q_learning_mode = true;
 
 	// This is based on the reflectivity, and the BRDF scaled to compensate for it.
 	if (hit.refl == DIFF && !q_learning_mode) {
@@ -550,28 +608,26 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 	else if (hit.refl == DIFF && depth == 1 && q_learning_mode) {
 		// Q-LEARNING, FIRST BOUNCE --------------------------------------------
 		d = sampleScatteringMaxQ(dict, dictAction, id, x, nl, r, states_rec);
-		PDF_inverse = dim_action_space;		// PDF = 1/24 since the ray can be scattered in one of the 24 areas
+		const float& cos_theta = nl.dot(d.norm());
+		PDF_inverse = 1;		// PDF = 1/24 since the ray can be scattered in one of the 24 areas
 		BRDF = 1/M_PI;
-		float cos_theta = d.norm().dot(Vec(0, 1, 0));
 		intersect(Ray(x, d.norm()), t, id);
 		*path_length = *path_length + t;
-		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec)) * cos_theta * PDF_inverse * BRDF;// get color in recursive function
+		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec)) * PDF_inverse * BRDF * cos_theta;// get color in recursive function
 	}
-	else if(hit.refl == DIFF && depth >= 1 && q_learning_mode){
+	else if(hit.refl == DIFF && depth > 1 && q_learning_mode){
 		// Q-LEARNING,  --------------------------------------------
 		Key state = rect[id]->add_key(x);
-		Vec dir2 = r.d;
-		float cos_theta2 = dir2.dot(nl);
-		BRDF =  std::max({hit.c.x, hit.c.y, hit.c.z});
-		updateQtable(states_rec.old_state, state, hit, dict, states_rec.old_action, BRDF, cos_theta2);
+		BRDF =  std::max({hit.c.x, hit.c.y, hit.c.z})/M_PI;
+		updateQtable(states_rec.old_state, state, hit, dict, dictAction, states_rec.old_action, BRDF , nl);
 
 		d = sampleScatteringMaxQ(dict, dictAction, id, x, nl, r, states_rec);
-		PDF_inverse = dim_action_space;		// PDF = 1/24 since the ray can be scattered in one of the 24 areas
+		const float& cos_theta = nl.dot(d.norm());
+		PDF_inverse = 1;		// PDF = 1/24 since the ray can be scattered in one of the 24 areas
 		BRDF = 1/M_PI;
-		float cos_theta1 = d.norm().dot(Vec(0, 1, 0));
 		intersect(Ray(x, d.norm()), t, id);
 		*path_length = *path_length + t;
-		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec)) * cos_theta1 * PDF_inverse * BRDF;// get color in recursive function
+		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec)) * PDF_inverse * BRDF * cos_theta;// get color in recursive function
 	}
 
 
@@ -602,19 +658,11 @@ int main(int argc, char *argv[]) {
 
 	// Set up image
 	int w = 512, h = 512; 		// Resolution
-	int samps = 16; 			// Number samples
+	int samps = 8; 			// Number samples
 	Vec r;					// Used for colors of samples
 	Vec *c = new Vec[w * h]; 	// The image
 
 	std::map<Key, QValue>* dict = new std::map<Key, QValue>;    			// dict position-Qvalue
-
-	std::map<Action, Direction>* dictAction = new std::map<Action, Direction>; 	// dict action-direction
-	initialize_dictAction(dictAction);
-
-    /*for ( const auto &myPair : *dictAction ) {
-        std::cout << myPair.first << std::endl;
-        std::cout << myPair.second.x << std::endl;
-    }*/
 
 	// TEMPORARY COUNTER
 	int counter_red = 0;
@@ -622,6 +670,15 @@ int main(int argc, char *argv[]) {
 	// Create states
 	int number_states = create_state_space(dict);
 	std::cout << "NUMBER STATES: " << number_states << std::endl;
+
+	// Dictionary for actions
+	std::map<Action, Direction>* dictAction = new std::map<Action, Direction>; 	// dict action-direction
+	initialize_dictAction(dictAction);
+    /*for ( const auto &myPair : *dictAction ) {
+        std::cout << myPair.first << std::endl;
+        std::cout << myPair.second.x << std::endl;
+    }*/
+
 
 	// Set up camera
 	Camera cam(LOOKFROM, Vec(50, 40, 5), Vec(0, 1, 0), 65, float(w) / float(h));

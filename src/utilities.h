@@ -69,6 +69,4 @@ std::array<T, N> operator+(std::array<T, N>  array1, std::array<T, N>  array2) {
 	return temp;
 }
 
-
-
 #endif
