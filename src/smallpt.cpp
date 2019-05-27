@@ -520,15 +520,29 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
     }
     //double p = *std::max_element(std::begin(qvalue), std::end(qvalue)); // max Q_value for Russian Roulette
 	if(0.95 > (rand() / double(RAND_MAX)) && total!=0){			// When Q_value is low, choose random. Else, choose max action
-		const double& prob = rand() / double(RAND_MAX);
+		const double& prob = rand() / double(RAND_MAX)*0.999;
 		double cumulativeProbability = 0.0;
+
+		int cont_temp = 0;
+
 		for (int i=0; i < dim_action_space; i++) {
 		    cumulativeProbability += qvalue[i]/total;
 		    if (prob <= cumulativeProbability) {
 		        action = i;
+		        cont_temp = 1;
 		        break;
 		    }
 		}
+
+		if(cont_temp==0){
+			for(int i=0; i < 24; i++){
+				std::cout << qvalue[i] << ",";
+			}
+			std::cout << std::endl;
+			std::cout << "PROBABILITY IS" << prob << std::endl;
+		}
+
+
 
 		//action = std::distance(qvalue.begin(), std::max_element(qvalue.begin(), qvalue.end()));		// get position max action
 		point_old_coord= addrDictAction[action];
@@ -537,6 +551,7 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
 		point_old_coord= addrDictAction[action];
 	}
 	states_rec.old_state = state;
+
 	states_rec.old_action = action;
 
 	// Scatter random inside the selected patch, convert to spherical coordinates for semplicity and then back to cartesian
@@ -599,6 +614,13 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, double *path_le
 	int id = 0;                           // initialize id of intersected object
 	Vec x = hittingPoint(r, id);            // id calculated inside the function
 
+
+	Key key = rect[id]->add_key(x);
+	std::map<Key, QValue> &addrDict = *dict;
+	if (addrDict.count(key) < 1) {
+			QValue value = rect[id]->add_value();			// To initialize Q-values. To return colors, comment this line.
+			addrDict[key] = value;
+		}
 
 	// To visualize states
 	//return visualize_states(dict, id, x, counter_red);
@@ -717,7 +739,7 @@ int main(int argc, char *argv[]) {
 	int samps = 16; 			// Number samples
 	Vec r;					// Used for colors of samples
 	Vec *c = new Vec[w * h]; 	// The image
-	int num_training_samples = 256; 			// Samples for Q learning
+	int num_training_samples = 100; 			// Samples for Q learning
 
 	std::map<Key, QValue>* dict = new std::map<Key, QValue>;    			// dict position-Qvalue
 
@@ -746,23 +768,16 @@ int main(int argc, char *argv[]) {
 	bool learning_phase = true;
 
 	// TRAINING PHASE
-	for (int y = 0; y < h; y++) {                 // Loop over image rows
-		fprintf(stderr, "\rTRAINING PHASE: Rendering (%d spp) %5.2f%%", num_training_samples, 100. * y / (h - 1));   // Print progress // @suppress("Invalid arguments")
-		for (unsigned short x = 0, Xi[3] = { 0, 0, y * y * y }; x < w; x++) { // Loop cols. Xi = random seed
-			for(int s=0; s < num_training_samples; s++){// u and v represents the percentage of the horizontal and vertical values
-				const float& u = float(x - 0.5 + rand() / double(RAND_MAX)) / float(w);
-				const float& v = float((h - y - 1) - 0.5 + rand() / double(RAND_MAX)) / float(h);
+	for (int s = 0; s < 2; s++) {		//	scatter rays 100 times more than the size of the screen
+		for (int y = 0; y < h; y++) {                 // Loop over image rows
+			fprintf(stderr, "\rTRAINING PHASE: %d Sample, Rendering (%d spp) %5.2f%%", s, num_training_samples, 100. * y / (h - 1));   // Print progress // @suppress("Invalid arguments")
+			for (unsigned short x = 0, Xi[3] = { 0, 0, y * y * y }; x < w; x++) { // Loop cols. Xi = random seed
+				const float& u = float(512*rand() / double(RAND_MAX)) / float(w);
+				const float& v = float(512*rand() / double(RAND_MAX)) / float(h);
 				Ray d = cam.get_ray(u, v);
 				Struct_states state_rec;
-				Hit_records hit;
-				int id = 0;                           // initialize id of intersected object
-				Vec hit_point = hittingPoint(Ray(cam.origin, d.d.norm()), id);            // id calculated inside the function
-				//std::cout << hit_point.x << ", " << hit_point.y << ", " << hit_point.z << std::endl;
-				if(create_center_states(dict, id, hit_point, counter_red)){
-					radiance(Ray(cam.origin, d.d.norm()), 0, Xi, ptrPath_length, dict, counter_red, dictAction, state_rec, learning_phase); // The average is the same as averaging at the end
-				}else{
-					break;
-				}
+				radiance(Ray(cam.origin, d.d.norm()), 0, Xi, ptrPath_length, dict, counter_red, dictAction, state_rec, learning_phase); // The average is the same as averaging at the end
+				//std::cout << "TRUE" << std::endl;
 			}
 		}
 	}
@@ -820,5 +835,7 @@ int main(int argc, char *argv[]) {
 	high_resolution_clock::time_point t2 = high_resolution_clock::now();
 	auto duration = duration_cast<milliseconds>(t2 - t1).count();
 	std::cout << " DURATION : " << duration;
+	delete dict;
+	delete dictAction;
 }
 
