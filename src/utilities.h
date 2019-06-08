@@ -8,7 +8,7 @@
  *      Author: mauro
  */
 
-#include <math.h>   // smallpt, a Path Tracer by Kevin Beason, 2008
+#include "math.h"   // smallpt, a Path Tracer by Kevin Beason, 2008
 
 #define RAND48_MULT_0   (0xe66d)
 #define RAND48_MULT_1   (0xdeec)
@@ -42,12 +42,12 @@ void _dorand48(unsigned short xseed[3])
     xseed[2] = (unsigned short)accu;
 }
 
-double erand48(unsigned short xseed[3])
+float erand48(unsigned short xseed[3])
 {
     _dorand48(xseed);
-    return ldexp((double)xseed[0], -48) +
-        ldexp((double)xseed[1], -32) +
-        ldexp((double)xseed[2], -16);
+    return ldexp((float)xseed[0], -48) +
+        ldexp((float)xseed[1], -32) +
+        ldexp((float)xseed[2], -16);
 }
 
 // operators for std::array<>
