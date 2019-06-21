@@ -23,12 +23,12 @@ using namespace std::chrono;
 
 const int NUMBER_OBJ = 17;
 const int dim_action_space = 24;
-using Key = std::array<float, 5>;
-using QValue = std::array<float, dim_action_space>;
+using Key = std::array<float, 6>;
+using QValue = std::array<float, dim_action_space + 1>;
 using ColorValue = std::array<float, 3>;
-using StateAction = std::array<float, 6>;		// Key for map, State + Action for learning rate and counts
+using StateAction = std::array<float, 7>;		// Key for map, State + Action for learning rate and counts
 using StateActionCount = float;					// Count of state-action pair visits for the learning rate
-float lr;
+float lr = 1;
 
 struct Vec {
 	float x, y, z;                  // position, also color (r,g,b)
@@ -97,7 +97,7 @@ struct Hit_records {		// Store object element
 };
 
 struct Struct_states {				// Store info on old and new state
-	std::array<float, 5> old_state;
+	std::array<float, 6> old_state;
 	int old_action;
 	float prob;
 	int old_id;
@@ -109,13 +109,17 @@ public:
 	virtual float intersect(const Ray &r) const = 0;
 	virtual bool intersect(const Vec &vec) const = 0;
 	virtual Vec normal(const Ray &r, Hit_records &hit, Vec &x) const = 0;
-	virtual std::array<float, 5> add_key(Vec &pos, Vec& nl) const = 0;
+	virtual std::array<float, 6> add_key(Vec &pos, Vec& nl) const {
+		Vec x_reduced = Vec(ceil((float) pos.x / 10), ceil((float) pos.y/ 10), ceil((float) pos.z / 10));
+		return { x_reduced.x, x_reduced.y, x_reduced.z, nl.x, nl.y, nl.z};
+	};
 	virtual std::array<float, 3> add_value_color(std::array<float, 3>& x_reduced) const = 0;
-	virtual std::array<float, dim_action_space> add_value() const {
-		std::array<float, dim_action_space> q_values;
+	virtual std::array<float, dim_action_space + 1> add_value() const {
+		std::array<float, dim_action_space+1> q_values;
 		for(int i=0; i <dim_action_space; i++){
-			q_values[i]=0.1;
+			q_values[i]=1;
 		}
+		q_values[dim_action_space]=1*dim_action_space;
 		return q_values;
 	};
 
@@ -161,10 +165,10 @@ public:
 		return n.dot(r.d) < 0 ? n : n * -1;
 	}
 
-	std::array<float, 5> add_key(Vec& pos, Vec& nl) const {
-		Vec x_reduced = Vec(ceil((float) pos.x / 10), pos.y / 10,ceil((float) pos.z / 10));
-		return { x_reduced.x, x_reduced.z, nl.x, nl.y, nl.z};
-	}
+//	std::array<float, 6> add_key(Vec& pos, Vec& nl) const {
+//		Vec x_reduced = Vec(ceil((float) pos.x / 10), ceil((float) pos.y/ 10), ceil((float) pos.z / 10));
+//		return { x_reduced.x, x_reduced.y, x_reduced.z, nl.x, nl.y, nl.z};
+//	}
 
 	std::array<float, 3> add_value_color(std::array<float, 3>& x_reduced) const {
 		return { x_reduced[0] / 10 * (rand() / float(RAND_MAX)), x_reduced[1] * (rand() / float(RAND_MAX)),
@@ -208,10 +212,10 @@ public:
 		return n.dot(r.d) < 0 ? n : n * -1;
 	}
 
-	std::array<float, 5> add_key(Vec& pos, Vec& nl) const {
-		Vec x_reduced = Vec(ceil((float) pos.x / 10), ceil((float) pos.y / 10),	pos.z / 10);
-		return { x_reduced.x, x_reduced.y, nl.x, nl.y, nl.z};
-	}
+//	std::array<float, 5> add_key(Vec& pos, Vec& nl) const {
+//		Vec x_reduced = Vec(ceil((float) pos.x / 10), ceil((float) pos.y / 10),	pos.z / 10);
+//		return { x_reduced.x, x_reduced.y, nl.x, nl.y, nl.z};
+//	}
 
 	std::array<float, 3> add_value_color(std::array<float, 3>& x_reduced) const {
 		return { x_reduced[0] / 10 * (rand() / float(RAND_MAX)), x_reduced[1] 	/ 10 * (rand() / float(RAND_MAX)),
@@ -255,10 +259,10 @@ public:
 		return n.dot(r.d) < 0 ? n : n * -1;
 	}
 
-	std::array<float, 5> add_key(Vec& pos, Vec& nl) const {
-		Vec x_reduced = Vec( pos.x / 10, ceil((float) pos.y / 10),	ceil((float) pos.z / 10));
-		return { x_reduced.y, x_reduced.z, nl.x, nl.y, nl.z};
-	}
+//	std::array<float, 5> add_key(Vec& pos, Vec& nl) const {
+//		Vec x_reduced = Vec( pos.x / 10, ceil((float) pos.y / 10),	ceil((float) pos.z / 10));
+//		return { x_reduced.y, x_reduced.z, nl.x, nl.y, nl.z};
+//	}
 
 	std::array<float, 3> add_value_color(std::array<float, 3>& x_reduced) const {
 		return { x_reduced[0] * (rand() / float(RAND_MAX)), x_reduced[1] 	/ 10 * (rand() / float(RAND_MAX)),
@@ -341,7 +345,7 @@ Hitable *rect[NUMBER_OBJ] = {
 	new Rectangle_yz(0, 81.6, 0, 170, 99, Vec(), Vec(.75, .25, .25), DIFF),		// Right, red
 	new Rectangle_xz(1, 99, 0, 170, 0, Vec(), Vec(.75, .75, .75), DIFF),		// Bottom
 	new Rectangle_xz(1, 99, 0, 170, 81.6, Vec(), Vec(.75, .75, .75), DIFF),		// Top
-	new Rectangle_xz(32, 68, 63, 96, 81.58, Vec(12, 12, 12), Vec(), DIFF),		// Light
+	new Rectangle_xz(32, 68, 63, 96, 81.595, Vec(12, 12, 12), Vec(), DIFF),		// Light
 
 
 	/*new Sphere(16.5,Vec(27,16.5,47), Vec(),Vec(1,1,1)*.999, DIFF),			//Mirr
@@ -397,7 +401,7 @@ inline bool intersect(const Ray &r, float &t, int &id, int& old_id) {
 }
 
 inline Vec importanceSampling_scattering(const Vec& nl, unsigned short *Xi) {
-
+	/*
 	// COSINE-WEIGHTED SAMPLING
 	float r1 = 2 * M_PI * erand48(Xi);		// get random angle
 	float r2 = erand48(Xi);			// get random distance from center
@@ -409,8 +413,8 @@ inline Vec importanceSampling_scattering(const Vec& nl, unsigned short *Xi) {
 	return (u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrt(1 - r2)).norm();
 
 	// reflection ray with cosine sampling (check calculus)
+	 */
 
-	/*
 	 // UNIFORM SAMPLING
 	 float r1 = 2*M_PI*erand48(Xi);		// get random angle Gamma
 	 float r2 = erand48(Xi);			// get random distance from center
@@ -419,7 +423,7 @@ inline Vec importanceSampling_scattering(const Vec& nl, unsigned short *Xi) {
 	 Vec u = ((fabs(w.x)>.1?Vec(0,1):Vec(1))%w).norm();
 	 Vec v = w%u;
 	 return (u*cos(r1)*sqrt(r2*(2-r2)) + v*sin(r1)*sqrt(r2*(2-r2)) + w*(1-r2)).norm();   // random reflection ray
-	 */
+
 }
 
 inline Vec light_sampling(const Vec& nl, const Vec& hit, unsigned short *Xi) {
@@ -501,6 +505,52 @@ inline void initialize_dictAction(std::map<Action, Direction> *dictAction){
 	myFile.close();
 }
 
+
+// DRAW SCATTER RAYS IN PLOTLY
+std::array<int,6> target_state = {8,2,9,0,0,1};
+inline void plotly_scatter_rays(Struct_states &states_rec, Vec& x){
+	if(states_rec.old_state[0]==target_state[0] && states_rec.old_state[1]==target_state[1] && states_rec.old_state[2]==target_state[2]
+		&& states_rec.old_state[3]==target_state[3] && states_rec.old_state[4]==target_state[4] && states_rec.old_state[5]==target_state[5]){
+		std::ofstream outfile;
+		outfile.open("scattered_rays.txt", std::ios_base::app);
+		outfile << x.x << "," << x.y << "," << x.z << std::endl;
+	}
+};
+
+// DRAW SCATTERED STATE IN PLOTLY
+inline void plotly_scatter_state(Key& key , Vec& x){
+	if(key[0]==target_state[0] && key[1]==target_state[1] && key[2]==target_state[2]
+		&& key[3]==target_state[3] && key[4]==target_state[4] && key[5]==target_state[5]){
+		std::ofstream outfile;
+		outfile.open("scattered_state.txt", std::ios_base::app);
+		outfile << x.x << "," << x.y << "," << x.z << std::endl;
+	}
+};
+
+// DRAW SCATTERED SPHERE IN PLOTLY
+inline void plotly_scatter_sphere(Key& key, Vec& d){
+	if(key[0]==target_state[0] && key[1]==target_state[1] && key[2]==target_state[2]
+		&& key[3]==target_state[3] && key[4]==target_state[4] && key[5]==target_state[5]){
+		Vec sphere = Vec(key[0]*10 - 5 + 5*d.x, key[1]*10 - 5 + 5*d.y,key[2]*10 - 5 + 5*d.z);
+		std::ofstream outfile;
+		outfile.open("scattered_sphere.txt", std::ios_base::app);
+		outfile << sphere.x << "," << sphere.y << "," << sphere.z << std::endl;
+	}
+};
+
+inline void plot_Q(Key& state,std::map<Key, QValue> *dict){
+	if(state[0]==target_state[0] && state[1]==target_state[1] && state[2]==target_state[2]
+			&& state[3]==target_state[3] && state[4]==target_state[4] && state[5]==target_state[5]){
+		std::map<Key, QValue> &addrDict = *dict;
+		std::ofstream outfile;
+		outfile.open("q-plot.txt", std::ios_base::app);
+		for(int i=0; i < dim_action_space; i++){
+			outfile << addrDict[state][i] << ",";
+		}
+		outfile << std::endl;
+	}
+}
+
 inline void updateQtable(Key& state, Key& next_state, Hit_records& hit,std::map<Key, QValue> *dict, std::map<Action, Direction> *dictAction, int &old_action, float& BRDF, Vec& nl,
 		Vec& x, float prob, std::map<StateAction, StateActionCount> *dictStateActionCount){
 
@@ -511,30 +561,38 @@ inline void updateQtable(Key& state, Key& next_state, Hit_records& hit,std::map<
 	float update = 0;
 	float& dict_state = addrDict[state][old_action];
 
-	std::array<float, dim_action_space>& dict_next_state = addrDict[next_state];
+	std::array<float, dim_action_space + 1>& dict_next_state = addrDict[next_state];
+	lr = 100 / (100 + addrDictStateActionCount[{state[0], state[1],state[2], state[3],state[4], state[5], (float) old_action}]);
 
-	lr = 1 /  (1+addrDictStateActionCount[{state[0], state[1],state[2], state[3],state[4], (float) old_action}]);
-
+	/*if(lr>0.1){
+		lr = 1 / (1 + addrDictStateActionCount[{state[0], state[1],state[2], state[3],state[4], state[5], (float) old_action}]);
+	}else{
+		lr = 0.1;
+	}*/
 	if (hit.e.x > 5){		// if light
 		update = dict_state * (1 - lr) + lr* std::max({hit.e.x, hit.e.y, hit.e.z});
 	}else{
 		float cumulative_q = 0;
-
-		// Create temporary coordinates system
-		Vec &w = nl.norm();
-		Vec u = getTangent(w);
-		const Vec& v = (u % w);
-
 		for(int i=0; i< dim_action_space; i++){
 			// calculate cos_theta_i
-			Vec action_vector = Vec(u*addrDictAction[i].x + v*addrDictAction[i].y + w* addrDictAction[i].z).norm();
-			const float& cos_theta_i = w.dot(action_vector);
-			cumulative_q += dict_next_state[i] * cos_theta_i;
+			cumulative_q += dict_next_state[i] * addrDictAction[i].y;
+			//std::cout << cumulative_q << std::endl;
 		}
 		update = dict_state * (1 - lr) + lr * (1/dim_action_space) * cumulative_q *  BRDF;		//maybe BRDF divided by pi
-	}
+		//std::cout << "------------------"<< std::endl;
+		//std::cout << "lr: " << lr << std::endl;
+		//std::cout << "update: " << update << std::endl;
 
+	}
 	addrDict[state][old_action] = update;
+
+	//update total
+	float total = 0;
+	for(int s=0; s<dim_action_space; s++){
+		total += addrDict[state][s];
+	}
+	addrDict[state][dim_action_space] = total;
+	plot_Q(state,dict);
 }
 
 inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Direction> *dictAction, int &id, Vec &x, Vec &nl, const Ray &r, Struct_states& states_rec,
@@ -547,26 +605,25 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
 	const Key& state = rect[id]->add_key(x, nl.norm());		// coordinates
 
 	if (addrDict.count(state) < 1) {
-		QValue value = rect[id]->add_value();			// To initialize Q-values. To return colors, comment this line.
+		const QValue& value = rect[id]->add_value();			// To initialize Q-values. To return colors, comment this line.
 		addrDict[state] = value;
 	}
 
 	// Create temporary coordinates system
 	Vec& w = nl.norm();
-	const Vec& u = getTangent(w);
-	const Vec& v = (w % u);
+	const Vec& u = getTangent(w).norm();
+	const Vec& v = (w % u).norm();
 
-	const std::array<float, dim_action_space>& qvalue = addrDict[state];
+	std::array<float, dim_action_space + 1>& qvalue = addrDict[state];
 
 	Vec point_old_coord;
 	int action;
 	const float& random = rand() / float(RAND_MAX);
 	// Choose action based on probability of actions, during TRAINING PHASE
 	if(learning_phase){
-		float total = 0;
+		const float& total = qvalue[dim_action_space];
 		float maximum = 0;
 		for(int s=0; s<dim_action_space; s++){
-			total += qvalue[s];
 			if(qvalue[s] > maximum){
 				maximum = qvalue[s];
 			}
@@ -583,8 +640,7 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
 					break;
 				}
 			}
-			//states_rec.prob = qvalue[action]/total;
-			states_rec.prob = 1/(qvalue[action]/total);
+			states_rec.prob = total/(qvalue[action]);
 
 			//action = std::distance(qvalue.begin(), std::max_element(qvalue.begin(), qvalue.end()));		// get position max action
 			point_old_coord= addrDictAction[action];
@@ -595,10 +651,10 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
 		}
 	}else{	// Choose action base don maximum Q value, during ACTIVE PHASE
 		// CHOOSING Q-PROPORTIONAL SCATTERING
-		float total = 0;
-		for(int s=0; s<dim_action_space; s++){
-			total += qvalue[s];
-		}
+		const float& total = qvalue[dim_action_space];
+//		for(int s=0; s<dim_action_space; s++){
+//			total += qvalue[s];
+//		}
 		const float& prob = random*0.99;
 		float cumulativeProbability = 0.0;
 		action = 0;
@@ -610,17 +666,12 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
 			}
 		}
 		states_rec.prob = (total *  M_PI)/(qvalue[action]*12);	// 1/ ( (q/tot) * (1/ (2 * pi) / 24))
-
 		point_old_coord= addrDictAction[action];
 
 		// CHOOSING MAX Q
 		/*action = std::distance(qvalue.begin(), std::max_element(qvalue.begin(), qvalue.end()));		// get position max action
 		point_old_coord= addrDictAction[action];
-		states_rec.prob = 0.2618;	*/	// 1 / (1 / (2 *pi) / n));
-	}
-
-	if(x.x >= 32  && x.x <= 68 && x.y >= 81 && x.z >= 63 && x.z <= 96){
-		std::cout << "STOPPP" << std::endl;
+		states_rec.prob = 0.2618; 	*/	// 1 / (1 / (2 *pi) / n));
 	}
 
 	states_rec.old_state = state;
@@ -628,15 +679,14 @@ inline Vec sampleScatteringMaxQ(std::map<Key, QValue> *dict, std::map<Action, Di
 
 
 	// Add StateAction count
-	const std::array<float, 6>& stateactionpair = {state[0],state[1],state[2],state[3],state[4], (float) action};
+	const std::array<float, 7>& stateactionpair = {state[0],state[1],state[2],state[3],state[4],state[5], (float) action};
 	if(addrDictStateActionCount.count(stateactionpair) < 1){
 		addrDictStateActionCount[stateactionpair] = 0;
 	}
 	addrDictStateActionCount[stateactionpair] = addrDictStateActionCount[stateactionpair] + 1;
 
 	// Scatter random inside the selected patch, convert to spherical coordinates for semplicity and then back to cartesian
-	//std::cout << "1: " << point_old_coord.x << "," << point_old_coord.y << "," << point_old_coord.z << std::endl;
-	// DEBUGGGGG
+
 	Vec spher_coord = cartToSpher(point_old_coord);
 
 	// RESULTS ARE NOT THE EXACT ONES. tHIS ALLOWS TO HAVE A SMALL FRAME, OTHERWISE THE LACK OF ACCURACY SENDS RAY IN THE WRONG DIRECTON
@@ -686,6 +736,7 @@ inline Vec visualize_states(std::map<Key, QValue> *dict, int id, Vec& x, int& co
 };
 
 
+
 inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_length, std::map<Key, QValue> *dict, int& counter_red, std::map<Action, Direction> *dictAction,
 		Struct_states &states_rec, bool& learning_phase, bool q_learning_mode, float& reward, std::map<StateAction, StateActionCount> *dictStateAction, int& counter, float& epsilon) {
 	Hit_records hit;
@@ -693,13 +744,8 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_len
 	int old_id = states_rec.old_id;
 	Vec x = hittingPoint(r, id, old_id);            // id calculated inside the function
 
-
-	// DRAW SCENE IN PLOTLY
-//	if(states_rec.old_state[0]==3 && states_rec.old_state[1]==8 && states_rec.old_state[2]==-0 && states_rec.old_state[3]==-1 && states_rec.old_state[4]==-0){
-//		std::ofstream outfile;
-//		outfile.open("scene.txt", std::ios_base::app);
-//		outfile << x.x << "," << x.y << "," << x.z << std::endl;
-//	}
+	// DRAW SCATTER RAYS IN PLOTLY
+	//plotly_scatter_rays(states_rec, x);
 
 	if(x.x==0){
 		counter +=1;
@@ -709,29 +755,39 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_len
 
 	Hitable* &obj = rect[id];				// the hit object
 	Vec nl = obj->normal(r, hit, x);
-	states_rec.old_id = id;
+
 	if(x.x >= 32  && x.x <= 68 && x.y >= 81 && x.z >= 63 && x.z <= 96){
 		hit.c = Vec(0,0,0);
 		hit.e = Vec(12,12,12);
 	}
+	Key key;
+	if(q_learning_mode){
+		states_rec.old_id = id;
+		Key key = rect[id]->add_key(x, nl.norm());
+		std::map<Key, QValue> &addrDict = *dict;
 
-	Key key = rect[id]->add_key(x, nl.norm());
-	std::map<Key, QValue> &addrDict = *dict;
-
-	if (addrDict.count(key) < 1) {
-		QValue value = rect[id]->add_value();			// To initialize Q-values. To return colors, comment this line.
-		addrDict[key] = value;
+		if (addrDict.count(key) < 1) {
+			QValue value = rect[id]->add_value();			// To initialize Q-values. To return colors, comment this line.
+			addrDict[key] = value;
+		}
 	}
+	// DRAW LINES IN PLOTLY
+//	std::ofstream outfile;
+//	outfile.open("lines.txt", std::ios_base::app);
+//	outfile << key[0] << ","<< key[1] << "," << key[2] << "," << key[3] << "," << key[4] << "," << key[5] << "," << x.x << "," << x.y << "," << x.z << std::endl;
+
+	// DRAW SCATTERED STATE IN PLOTLY
+	//plotly_scatter_state(key, x);
 
 	Vec f = hit.c;							// object color
 	float p = f.x > f.y && f.x > f.z ? f.x : f.y > f.z ? f.y : f.z; // max reflectivity (maximum component of r,g,b)
 	const float& q = rand() / float(RAND_MAX);
 
-	if (++depth > 10 || !p)  {// Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
+	if (++depth > 5 || !p)  {// Russian Roulette. After 5 bounces, it determines if the ray continues or stops.
 		if (q < p) {
 			f = f * (1 / p);
 		} else {
-			if(depth>1 && learning_phase){		// If gets light or nothing, update Q-value
+			if(depth>1 && learning_phase && q_learning_mode){		// If gets light or nothing, update Q-value
 				float BRDF = std::max({hit.c.x, hit.c.y, hit.c.z})/M_PI;
 				updateQtable(states_rec.old_state, key, hit, dict, dictAction, states_rec.old_action, BRDF , nl, x, states_rec.prob,dictStateAction);
 			}
@@ -744,72 +800,83 @@ inline Vec radiance(const Ray &r, int depth, unsigned short *Xi, float *path_len
 	}
 
 	Vec d;
+	Vec d1;
+	Vec d2;
 	float PDF_inverse = 1;
 	float BRDF = 1;
-	float t; 	// distance to intersection
-
+	float PDF_inverse2 = 1;
+	float BRDF2 = 1;
+	float t = 0; 	// distance to intersection
+	bool explicit_light = true;
 	// This is based on the reflectivity, and the BRDF scaled to compensate for it.
 	if (hit.refl == DIFF && !q_learning_mode) {
-		if (q < 1) {
 		// ------------- EXPLICIT LIGHT SAMPLING -------------------------------------
-			d = light_sampling(nl, x, Xi);
-			intersect(Ray(x, d.norm()), t, id, old_id);
-			if (id != 6) {
-				d = importanceSampling_scattering(nl, Xi);
-				intersect(Ray(x, d.norm()), t, id, old_id);
-			} else {
-				PDF_inverse = fabs((1296 * d.norm().dot(Vec(0, 1, 0))) / (t * t));	//PDF = r^2 / (A * cos(theta_light))
-				BRDF = fabs(d.norm().dot(nl) / M_PI);
+		// Samples need to be doubled.
+		if(explicit_light){
+			d1 = importanceSampling_scattering(nl, Xi);
+			intersect(Ray(x, d1.norm()), t, id, old_id);
+			if(t < 1e20){
+				*path_length = *path_length + t;
 			}
-		// ------------- RANDOM SCATTERING ------------------------------------
-		} else {
+		//		if(depth==1 && id==6){
+		//			return Vec(0,0,0);
+		//		}
+		//		return hit.e + f.mult(radiance(Ray(x, d1.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse * BRDF;// get color in recursive functi
+			if(id != 6){
+				d2 = light_sampling(nl, x, Xi);
+				intersect(Ray(x, d2.norm()), t, id, old_id);
+				if(id==6){
+					if(t < 1e20){
+						*path_length = *path_length + t;
+					}
+					PDF_inverse2 = fabs((1296 * d2.norm().dot(Vec(0, 1, 0))) / (t * t));	//PDF = r^2 / (A * cos(theta_light))
+					BRDF2 = fabs(d2.norm().dot(nl) / M_PI);
+		//				return hit.e + f.mult(radiance(Ray(x, d2.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse2 * BRDF2 ;  // get color in recursi;// get color in recursive function
+					return hit.e + f.mult(radiance(Ray(x, d1.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse * BRDF +
+							 f.mult(radiance(Ray(x, d2.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse2 * BRDF2 ;  // get color in recursi;// get color in recursive function
+					}
+			}
+			return hit.e + f.mult(radiance(Ray(x, d1.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse * BRDF;// get color in recursive function
+		}
+		else{
+			// ------------- RANDOM SCATTERING ------------------------------------
 			d = importanceSampling_scattering(nl, Xi);
 			intersect(Ray(x, d.norm()), t, id, old_id);
+			if(t < 1e20){
+				*path_length = *path_length + t;
+			}
 		}
-		*path_length = *path_length + t;
+		//plotly_scatter_sphere(key, d);
 		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse * BRDF;// get color in recursive function
 	}
 	else if (hit.refl == DIFF && depth == 1 && learning_phase ) {
-		// ------------ Q-LEARNING, TRAINING PHASE, FIRST BOUNCE --------------------------------------------
-		d = sampleScatteringMaxQ(dict, dictAction, id, x, nl, r, states_rec, learning_phase, dictStateAction, epsilon);
-		const float& cos_theta = nl.dot(d.norm());
-		PDF_inverse = states_rec.prob;		// PDF = 1/24 since the ray can be scattered in one of the 24 areas
-		BRDF = 1/M_PI;
-		intersect(Ray(x, d.norm()), t, id, old_id);
-		//*path_length = *path_length + t;
-		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse * BRDF * cos_theta;// get color in recursive function
+	// ------------ Q-LEARNING, TRAINING PHASE, FIRST BOUNCE --------------------------------------------
+	d = sampleScatteringMaxQ(dict, dictAction, id, x, nl, r, states_rec, learning_phase, dictStateAction, epsilon);
+	PDF_inverse = states_rec.prob;		// PDF = 1/24 since the ray can be scattered in one of the 24 areas
+	//intersect(Ray(x, d.norm()), t, id, old_id);
+	//*path_length = *path_length + t;
+	return radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon);// get color in recursive function
 	}
 	else if(hit.refl == DIFF && depth > 1 && learning_phase){
-		// ------------- Q-LEARNING, TRAINING PHASE --------------------------------------------
-		Key state = rect[id]->add_key(x, nl.norm());
-		std::map<Key, QValue> &addrDict = *dict;
-
-		if (addrDict.count(state) < 1) {
-			QValue value = rect[id]->add_value();
-			addrDict[state] = value;
-		}
-
 		BRDF =  std::max({hit.c.x, hit.c.y, hit.c.z})/M_PI;
-		updateQtable(states_rec.old_state, state, hit, dict, dictAction, states_rec.old_action, BRDF , nl, x, states_rec.prob,dictStateAction);
+		updateQtable(states_rec.old_state, key, hit, dict, dictAction, states_rec.old_action, BRDF , nl, x, states_rec.prob,dictStateAction);
 
 		d = sampleScatteringMaxQ(dict, dictAction, id, x, nl, r, states_rec, learning_phase, dictStateAction, epsilon);
-		const float& cos_theta = nl.dot(d.norm());
 		PDF_inverse = states_rec.prob;		// PDF = 1/24 since the ray can be scattered in one of the 24 areas
-		BRDF = 1/M_PI;
-		intersect(Ray(x, d.norm()), t, id, old_id);
+		//intersect(Ray(x, d.norm()), t, id, old_id);
 		//*path_length = *path_length + t;
-		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse * BRDF * cos_theta;// get color in recursive function
+		return radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon);// get color in recursive function
 	}
 	else if (hit.refl == DIFF && !learning_phase) {
 		// --------------Q-LEARNING, ACTIVE PHASE --------------------------------------------
 		d = sampleScatteringMaxQ(dict, dictAction, id, x, nl, r, states_rec, learning_phase, dictStateAction, epsilon);
 		const float& cos_theta = nl.dot(d.norm());
 
+//		plotly_scatter_sphere(key, d);
 		// Calculate PDF as probability to scatter in that direction
 		PDF_inverse = states_rec.prob;
 		BRDF = 1/M_PI;
 		intersect(Ray(x, d.norm()), t, id, old_id);
-		*path_length = *path_length + t;
 		return hit.e + f.mult(radiance(Ray(x, d.norm()), depth, Xi, path_length, dict, counter_red, dictAction, states_rec, learning_phase, q_learning_mode, reward, dictStateAction, counter, epsilon)) * PDF_inverse * BRDF * cos_theta;// get color in recursive function
 	}
 
@@ -838,7 +905,7 @@ int main(int argc, char *argv[]) {
 
 	// Set up image
 	int w = 512, h = 512; 		// Resolution
-	int samps = 32; 			// Number samples
+	int samps = 16; 			// Number samples
 	Vec r;					// Used for colors of samples
 	Vec *c = new Vec[w * h]; 	// The image
 	int num_training_samples = 100; 			// Samples for Q learning
@@ -871,8 +938,9 @@ int main(int argc, char *argv[]) {
 	float path_length = 0;
 	float* ptrPath_length = &path_length;
 	float reward = 0;
-	float epsilon = 1;
-	float epsilon_decay = 0.99;
+	float epsilon = 0;
+	//float epsilon_decay = 0.9965;
+	float epsilon_decay = 0;
 	// DEBUG
 	int counter = 0;
 
@@ -881,11 +949,11 @@ int main(int argc, char *argv[]) {
 	bool learning_phase = true;			// Scatter proportional to Q VS. Greedy Q
 	bool q_table_available = false ;		// create Q-Table or retrieve a pregenerated one
 
-	if(!q_table_available){
+	if(!q_table_available && q_learning_mode){
 		float avg_reward;
 
 		// TRAINING PHASE, NO Q-Table available--------------------------------------------------------------
-		for (int s = 0; s < 3; s++) {		//	scatter rays 100 times more than the size of the screen
+		for (int s = 0; s < 5; s++) {		//	scatter rays 100 times more than the size of the screen
 			std::cout << "-----------------------" << std::endl << "EPISODE " << (s+1) << std::endl;
 			for (int y = 0; y < h; y++) {                 // Loop over image rows
 				//fprintf(stderr, "\rTRAINING PHASE: %d Sample, Rendering (%d spp) %5.2f%%", s, num_training_samples, 100. * y / (h - 1));   // Print progress // @suppress("Invalid arguments")
@@ -908,8 +976,16 @@ int main(int argc, char *argv[]) {
 				outfile.open("reward_epsilon_decay.txt", std::ios_base::app);
 				outfile << avg_reward << " " << epsilon << std::endl;
 				epsilon *= epsilon_decay;
-				//std::cout << epsilon << std::endl;
 			}
+			if(s==0){
+				std::ofstream outfile;
+				outfile.open("average_visits.txt", std::ios_base::app);
+				std::map<StateAction, StateActionCount> &addrDictStateActionCount = *dictStateActionCount;
+				for(auto const &x : *dictStateActionCount) {
+					outfile << x.second << std::endl;
+				}
+			}
+
 		}
 
 		std::cout << "NUMBER OF CENTER STATES: " << counter_red << std::endl;
@@ -919,10 +995,10 @@ int main(int argc, char *argv[]) {
 		if (myfile.is_open())
 		{
 			for(auto const &x : *dict) {
-				for(int i=0; i<5; i++){
+				for(int i=0; i<6; i++){
 					myfile << x.first[i] << ",";
 				}
-				for(int i=0; i< dim_action_space; i++){
+				for(int i=0; i< dim_action_space+1; i++){
 				  myfile << x.second[i] << ",";
 				}
 				myfile << std::endl;
@@ -937,8 +1013,8 @@ int main(int argc, char *argv[]) {
 		std::ifstream infile( "q-value-TEST.txt" );
 		std::string line;
 		vector<string> results;
-		std::array<float, 5> temp_state;
-		std::array<float, 24> temp_qvalue;
+		std::array<float, 6> temp_state;
+		std::array<float, dim_action_space+1> temp_qvalue;
 		while (std::getline(infile, line))
 		{
 			std::istringstream iss(line);
@@ -947,11 +1023,11 @@ int main(int argc, char *argv[]) {
 				results.push_back(line);
 			}
 
-			for(int i=0; i<5; i++){
+			for(int i=0; i<6; i++){
 				temp_state[i]=(float)std::stod(results[i]);
 			}
-			for(int i=0; i<24; i++){
-				temp_qvalue[i]=(float)std::stod(results[i+5]);
+			for(int i=0; i<dim_action_space+1; i++){
+				temp_qvalue[i]=(float)std::stod(results[i+6]);
 			}
 			std::map<Key, QValue> &addrDict = *dict;
 			addrDict[temp_state] = temp_qvalue;
@@ -979,20 +1055,19 @@ int main(int argc, char *argv[]) {
 				state_rec.old_action = -1;
 				state_rec.old_id = -1;
 				state_rec.prob = -1;
-				r = r + radiance(Ray(cam.origin, d.d.norm()), 0, Xi, ptrPath_length, dict, counter_red, dictAction, state_rec, learning_phase, q_learning_mode, reward, dictStateActionCount, counter, epsilon) * (float) (1. / samps); // The average is the same as averaging at the end
-
+//				std::ofstream outfile;
+//				outfile.open("lines.txt", std::ios_base::app);
+//				outfile <<"---------------------------" << std::endl;
+				r = r + radiance(Ray(cam.origin, d.d.norm()), 0, Xi, ptrPath_length, dict, counter_red, dictAction, state_rec, learning_phase, q_learning_mode, reward, dictStateActionCount, counter, epsilon) * (float) (1. / (2 * samps)); // The average is the same as averaging at the end
 			} // Camera rays are pushed ^^^^^ forward to start in interior
 			c[i] = c[i] + Vec(clamp(r.x), clamp(r.y), clamp(r.z));
 			i++;
 			r = Vec();
 		}
-		std::cout << counter << std::endl;
-
 	}
 	std::cout << "PATH LENGTH: " << path_length / (samps * w * h) << std::endl;
 	std::cout << "COUNTER RED : " << counter_red << std::endl;
 	std::cout << "COUNTER : " << counter << std::endl;
-
 
 
 	FILE *f = fopen("try.ppm", "w"); // Write image to PPM file.
